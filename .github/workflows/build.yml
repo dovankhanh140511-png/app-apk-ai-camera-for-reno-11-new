@@ -22,7 +22,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '8.14'
-          cache-provider: true
+          cache-disabled: true
 
       - name: Generate complete Android project
         run: |
