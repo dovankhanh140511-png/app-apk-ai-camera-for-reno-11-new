@@ -1,0 +1,879 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.14'
+          cache-provider: basic
+
+      - name: Generate complete Android project
+        run: |
+          mkdir -p app/src/main/assets app/src/main/java/com/example/aicamera
+
+          cat << 'EOF' > gradle.properties
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          android.enableJetifier=false
+          EOF
+
+          cat << 'EOF' > settings.gradle.kts
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "AICamera"
+          include(":app")
+          EOF
+
+          cat << 'EOF' > build.gradle.kts
+          plugins {
+              id("com.android.application") version "8.11.1" apply false
+              id("org.jetbrains.kotlin.android") version "2.2.20" apply false
+          }
+          EOF
+
+          cat << 'EOF' > app/build.gradle.kts
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+
+          android {
+              namespace = "com.example.aicamera"
+              compileSdk = 36
+
+              defaultConfig {
+                  applicationId = "com.example.aicamera"
+                  minSdk = 24
+                  targetSdk = 36
+                  versionCode = 1
+                  versionName = "1.0"
+              }
+
+              buildTypes {
+                  release {
+                      isMinifyEnabled = false
+                  }
+              }
+
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+          }
+
+          dependencies {
+              implementation("androidx.core:core-ktx:1.15.0")
+              implementation("androidx.appcompat:appcompat:1.7.0")
+              implementation("androidx.activity:activity-ktx:1.10.1")
+              implementation("androidx.webkit:webkit:1.12.1")
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.CAMERA" />
+              <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+              <application
+                  android:allowBackup="true"
+                  android:label="AI Camera"
+                  android:theme="@style/Theme.AppCompat.NoActionBar">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:screenOrientation="portrait">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+
+          </manifest>
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/example/aicamera/MainActivity.kt
+          package com.example.aicamera
+
+          import android.Manifest
+          import android.annotation.SuppressLint
+          import android.content.ContentValues
+          import android.content.pm.PackageManager
+          import android.graphics.Color
+          import android.os.Build
+          import android.os.Bundle
+          import android.os.Environment
+          import android.provider.MediaStore
+          import android.util.Base64
+          import android.webkit.*
+          import android.widget.Toast
+          import androidx.activity.OnBackPressedCallback
+          import androidx.activity.SystemBarStyle
+          import androidx.activity.enableEdgeToEdge
+          import androidx.activity.result.contract.ActivityResultContracts
+          import androidx.appcompat.app.AppCompatActivity
+          import androidx.core.content.ContextCompat
+          import androidx.webkit.WebViewAssetLoader
+
+          class MainActivity : AppCompatActivity() {
+
+              private lateinit var webView: WebView
+              private var pendingPermissionRequest: PermissionRequest? = null
+              private val appUrl = "https://appassets.androidplatform.net/assets/index.html"
+
+              private val cameraLauncher = registerForActivityResult(
+                  ActivityResultContracts.RequestPermission()
+              ) { granted ->
+                  if (granted) {
+                      val req = pendingPermissionRequest
+                      pendingPermissionRequest = null
+                      if (req != null) {
+                          req.grant(req.resources)
+                      } else if (::webView.isInitialized) {
+                          webView.loadUrl(appUrl)
+                      }
+                  } else {
+                      pendingPermissionRequest?.deny()
+                      pendingPermissionRequest = null
+                      Toast.makeText(this, "Vui lòng cấp quyền Camera để chụp ảnh", Toast.LENGTH_LONG).show()
+                      if (::webView.isInitialized && webView.url == null) {
+                          webView.loadUrl(appUrl)
+                      }
+                  }
+              }
+
+              @SuppressLint("SetJavaScriptEnabled")
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  enableEdgeToEdge(
+                      statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+                      navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT)
+                  )
+
+                  webView = WebView(this).apply {
+                      setBackgroundColor(Color.BLACK)
+                  }
+                  setContentView(webView)
+
+                  val assetLoader = WebViewAssetLoader.Builder()
+                      .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+                      .build()
+
+                  webView.settings.apply {
+                      javaScriptEnabled = true
+                      domStorageEnabled = true
+                      mediaPlaybackRequiresUserGesture = false
+                      allowFileAccess = false
+                  }
+
+                  webView.addJavascriptInterface(AndroidBridge(), "AndroidBridge")
+
+                  webView.webViewClient = object : WebViewClient() {
+                      override fun shouldInterceptRequest(
+                          view: WebView,
+                          request: WebResourceRequest
+                      ): WebResourceResponse? {
+                          val response = assetLoader.shouldInterceptRequest(request.url) ?: return null
+                          val path = request.url.path ?: ""
+                          when {
+                              path.endsWith(".mjs") || path.endsWith(".js") -> response.mimeType = "application/javascript"
+                              path.endsWith(".wasm") -> response.mimeType = "application/wasm"
+                          }
+                          return response
+                      }
+                  }
+
+                  webView.webChromeClient = object : WebChromeClient() {
+                      override fun onPermissionRequest(request: PermissionRequest?) {
+                          if (request == null) return
+                          runOnUiThread {
+                              val isTrustedOrigin = request.origin?.toString()
+                                  ?.startsWith("https://appassets.androidplatform.net") == true
+                              if (!isTrustedOrigin) {
+                                  request.deny()
+                                  return@runOnUiThread
+                              }
+
+                              if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA)
+                                  == PackageManager.PERMISSION_GRANTED
+                              ) {
+                                  request.grant(request.resources)
+                              } else {
+                                  pendingPermissionRequest = request
+                                  cameraLauncher.launch(Manifest.permission.CAMERA)
+                              }
+                          }
+                      }
+
+                      override fun onPermissionRequestCanceled(request: PermissionRequest?) {
+                          if (pendingPermissionRequest == request) {
+                              pendingPermissionRequest = null
+                          }
+                      }
+                  }
+
+                  onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+                      override fun handleOnBackPressed() {
+                          webView.evaluateJavascript(
+                              "(function(){ if(window.closePreviewIfOpen && window.closePreviewIfOpen()) return 'closed'; return 'exit'; })()"
+                          ) { result ->
+                              if (result != "\"closed\"") {
+                                  isEnabled = false
+                                  onBackPressedDispatcher.onBackPressed()
+                              }
+                          }
+                      }
+                  })
+
+                  if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                      == PackageManager.PERMISSION_GRANTED
+                  ) {
+                      webView.loadUrl(appUrl)
+                  } else {
+                      cameraLauncher.launch(Manifest.permission.CAMERA)
+                  }
+              }
+
+              override fun onPause() {
+                  super.onPause()
+                  webView.onPause()
+              }
+
+              override fun onResume() {
+                  super.onResume()
+                  webView.onResume()
+              }
+
+              override fun onDestroy() {
+                  webView.destroy()
+                  super.onDestroy()
+              }
+
+              inner class AndroidBridge {
+                  @JavascriptInterface
+                  fun saveImage(base64DataUrl: String, fileName: String) {
+                      try {
+                          val base64Clean = base64DataUrl.substringAfter("base64,")
+                          val bytes = Base64.decode(base64Clean, Base64.DEFAULT)
+
+                          val values = ContentValues().apply {
+                              put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                              put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                  put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/AICamera")
+                                  put(MediaStore.Images.Media.IS_PENDING, 1)
+                              }
+                          }
+
+                          val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                          if (uri != null) {
+                              contentResolver.openOutputStream(uri)?.use { os -> os.write(bytes) }
+                              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                  values.clear()
+                                  values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                                  contentResolver.update(uri, values, null, null)
+                              }
+                              runOnUiThread {
+                                  Toast.makeText(this@MainActivity, "Đã lưu ảnh vào Thư viện!", Toast.LENGTH_SHORT).show()
+                              }
+                          } else {
+                              throw IllegalStateException("Không tạo được tệp ảnh trong MediaStore")
+                          }
+                      } catch (e: Exception) {
+                          runOnUiThread {
+                              Toast.makeText(this@MainActivity, "Lỗi lưu ảnh: ${e.message}", Toast.LENGTH_SHORT).show()
+                          }
+                      }
+                  }
+              }
+          }
+          EOF
+
+          cat << 'HTML_EOF' > app/src/main/assets/index.html
+          <!DOCTYPE html>
+          <html lang="vi">
+          <head>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+            <meta name="theme-color" content="#000000" />
+            <meta name="mobile-web-app-capable" content="yes" />
+            <meta name="apple-mobile-web-app-capable" content="yes" />
+            <title>AI Camera - Bố Cục Thông Minh</title>
+            <style>
+              :root {
+                --bg: #000000;
+                --surface: rgba(20, 20, 22, 0.82);
+                --text: #f5f5f7;
+                --muted: #a1a1aa;
+                --accent: #22c55e;
+                --warn: #f59e0b;
+                --border: rgba(255, 255, 255, 0.14);
+                --safe-top: env(safe-area-inset-top, 12px);
+                --safe-bottom: env(safe-area-inset-bottom, 16px);
+              }
+              * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+              html, body {
+                margin: 0; padding: 0; width: 100%; height: 100%;
+                background: var(--bg); color: var(--text);
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                overflow: hidden; touch-action: manipulation;
+              }
+              .app { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; background: #000; }
+              .stage { position: relative; flex: 1; width: 100%; overflow: hidden; background: #000; }
+              #cameraVideo, #overlayCanvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+              #cameraVideo.mirrored, #overlayCanvas.mirrored { transform: scaleX(-1); }
+              #overlayCanvas { pointer-events: none; z-index: 2; }
+              .top-bar {
+                position: absolute; top: 0; left: 0; right: 0; z-index: 5;
+                padding: calc(var(--safe-top) + 10px) 16px 12px;
+                display: flex; align-items: center; justify-content: space-between; gap: 10px;
+                background: linear-gradient(to bottom, rgba(0,0,0,0.75), rgba(0,0,0,0));
+              }
+              .badge {
+                display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px;
+                border-radius: 999px; background: var(--surface); backdrop-filter: blur(12px);
+                border: 1px solid var(--border); font-size: 13px; font-weight: 600;
+                letter-spacing: 0.2px; transition: all 0.2s ease;
+              }
+              .badge.good {
+                background: rgba(34, 197, 94, 0.22); border-color: var(--accent);
+                color: #86efac; box-shadow: 0 0 18px rgba(34, 197, 94, 0.28);
+              }
+              .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); flex-shrink: 0; }
+              .badge.good .dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+              .badge.loading .dot { background: #60a5fa; animation: pulse 1s infinite; }
+              @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.8); } }
+              .ratio-group {
+                display: flex; background: var(--surface); backdrop-filter: blur(12px);
+                border: 1px solid var(--border); border-radius: 999px; padding: 3px;
+              }
+              .ratio-btn {
+                border: none; background: transparent; color: var(--muted);
+                font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 999px; cursor: pointer;
+              }
+              .ratio-btn.active { background: #fff; color: #000; }
+              .meta-pill {
+                position: absolute; top: calc(var(--safe-top) + 60px); left: 16px; z-index: 4;
+                padding: 4px 10px; border-radius: 8px; background: rgba(0, 0, 0, 0.55);
+                border: 1px solid rgba(255,255,255,0.08); font-size: 11px; color: var(--muted); pointer-events: none;
+              }
+              .bottom-bar {
+                position: relative; z-index: 5; background: #09090b; border-top: 1px solid var(--border);
+                padding: 18px 24px calc(var(--safe-bottom) + 18px);
+                display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px;
+              }
+              .side-btn {
+                justify-self: start; display: inline-flex; align-items: center; justify-content: center;
+                gap: 8px; min-height: 48px; padding: 0 16px; border-radius: 999px;
+                border: 1px solid var(--border); background: #18181b; color: var(--text);
+                font-size: 13px; font-weight: 600; cursor: pointer;
+              }
+              .side-btn.right { justify-self: end; }
+              .side-btn:active { transform: scale(0.96); background: #27272a; }
+              .shutter-btn {
+                width: 74px; height: 74px; border-radius: 50%; border: 4px solid #fff;
+                background: transparent; padding: 4px; cursor: pointer;
+                display: flex; align-items: center; justify-content: center; transition: transform 0.12s ease;
+              }
+              .shutter-btn::after {
+                content: ""; width: 100%; height: 100%; border-radius: 50%; background: #fff;
+                transition: background 0.2s ease, transform 0.12s ease;
+              }
+              .shutter-btn.ready { border-color: var(--accent); }
+              .shutter-btn.ready::after { background: var(--accent); }
+              .shutter-btn:active::after { transform: scale(0.9); }
+              .shutter-btn:disabled { opacity: 0.45; pointer-events: none; }
+              .preview-modal {
+                position: fixed; inset: 0; z-index: 20; background: #000; display: none;
+                flex-direction: column; padding: calc(var(--safe-top) + 14px) 16px calc(var(--safe-bottom) + 18px);
+              }
+              .preview-modal.open { display: flex; }
+              .preview-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+              .preview-title { font-size: 16px; font-weight: 700; }
+              .preview-res {
+                font-size: 12px; color: var(--accent); font-weight: 600;
+                background: rgba(34, 197, 94, 0.15); padding: 4px 10px; border-radius: 999px;
+              }
+              .preview-img-wrap {
+                flex: 1; display: flex; align-items: center; justify-content: center;
+                overflow: hidden; border-radius: 14px; background: #09090b; border: 1px solid var(--border);
+              }
+              .preview-img-wrap img { max-width: 100%; max-height: 100%; object-fit: contain; }
+              .preview-actions { display: grid; grid-template-columns: 1fr 1.4fr; gap: 12px; margin-top: 16px; }
+              .btn {
+                min-height: 52px; border-radius: 14px; border: 1px solid var(--border);
+                font-size: 15px; font-weight: 700; cursor: pointer;
+                display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+              }
+              .btn-secondary { background: #18181b; color: var(--text); }
+              .btn-primary { background: var(--accent); color: #052e16; border-color: var(--accent); }
+              .btn:active { transform: scale(0.98); }
+              .permission-box {
+                position: absolute; inset: 0; z-index: 15; background: rgba(0, 0, 0, 0.92);
+                display: none; flex-direction: column; align-items: center; justify-content: center;
+                text-align: center; padding: 28px; gap: 14px;
+              }
+              .permission-box.show { display: flex; }
+              .permission-box h2 { margin: 0; font-size: 19px; }
+              .permission-box p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--muted); max-width: 340px; }
+              .flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 30; transition: opacity 0.16s ease; }
+              .flash.active { opacity: 0.75; transition: none; }
+            </style>
+          </head>
+          <body>
+            <div class="app">
+              <div class="stage" id="stage">
+                <video id="cameraVideo" autoplay playsinline muted></video>
+                <canvas id="overlayCanvas"></canvas>
+                <div class="top-bar">
+                  <div class="badge loading" id="statusBadge">
+                    <span class="dot"></span>
+                    <span id="statusText">Đang tải AI...</span>
+                  </div>
+                  <div class="ratio-group" role="group" aria-label="Tỷ lệ khung cắt">
+                    <button class="ratio-btn active" data-ratio="0.8">4:5</button>
+                    <button class="ratio-btn" data-ratio="0.75">3:4</button>
+                  </div>
+                </div>
+                <div class="meta-pill" id="metaInfo">Độ phân giải: đang khởi tạo...</div>
+                <div class="permission-box" id="errorOverlay">
+                  <h2>Không thể mở Camera</h2>
+                  <p id="errorDesc">Vui lòng cấp quyền Camera và đảm bảo chạy qua HTTPS hoặc ứng dụng Android.</p>
+                  <button class="btn btn-primary" id="retryBtn" style="padding: 0 24px;">Thử lại</button>
+                </div>
+              </div>
+              <div class="bottom-bar">
+                <button class="side-btn" id="switchCamBtn" aria-label="Đổi camera"><span>🔄 Đổi cam</span></button>
+                <button class="shutter-btn" id="shutterBtn" aria-label="Chụp ảnh" disabled></button>
+                <button class="side-btn right" id="toggleAiBtn" aria-label="Bật tắt AI"><span>🤖 AI: Bật</span></button>
+              </div>
+            </div>
+            <div class="preview-modal" id="previewModal">
+              <div class="preview-header">
+                <div class="preview-title">Ảnh đã cắt theo bố cục AI</div>
+                <div class="preview-res" id="previewRes">0 × 0 px</div>
+              </div>
+              <div class="preview-img-wrap"><img id="previewImg" alt="Ảnh đã chụp" /></div>
+              <div class="preview-actions">
+                <button class="btn btn-secondary" id="retakeBtn">Chụp lại</button>
+                <button class="btn btn-primary" id="downloadBtn">Tải ảnh về</button>
+              </div>
+            </div>
+            <div class="flash" id="flashEl"></div>
+
+            <script type="module">
+              import { FilesetResolver, ObjectDetector } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22";
+
+              const video = document.getElementById("cameraVideo");
+              const canvas = document.getElementById("overlayCanvas");
+              const ctx = canvas.getContext("2d");
+              const stage = document.getElementById("stage");
+              const statusBadge = document.getElementById("statusBadge");
+              const statusText = document.getElementById("statusText");
+              const metaInfo = document.getElementById("metaInfo");
+              const shutterBtn = document.getElementById("shutterBtn");
+              const switchCamBtn = document.getElementById("switchCamBtn");
+              const toggleAiBtn = document.getElementById("toggleAiBtn");
+              const ratioBtns = document.querySelectorAll(".ratio-btn");
+              const errorOverlay = document.getElementById("errorOverlay");
+              const errorDesc = document.getElementById("errorDesc");
+              const retryBtn = document.getElementById("retryBtn");
+              const previewModal = document.getElementById("previewModal");
+              const previewImg = document.getElementById("previewImg");
+              const previewRes = document.getElementById("previewRes");
+              const retakeBtn = document.getElementById("retakeBtn");
+              const downloadBtn = document.getElementById("downloadBtn");
+              const flashEl = document.getElementById("flashEl");
+
+              let objectDetector = null;
+              let currentStream = null;
+              let facingMode = "environment";
+              let targetRatio = 4 / 5;
+              let aiEnabled = true;
+              let rafId = null;
+              let lastVideoTime = -1;
+              let lastInferTime = 0;
+              let smoothedCrop = null;
+              let latestDetections = [];
+              let capturedDataUrl = null;
+              let capturedBlob = null;
+
+              const LABEL_VI = {
+                person: "Người", cat: "Mèo", dog: "Chó", bird: "Chim",
+                car: "Ô tô", motorcycle: "Xe máy", bicycle: "Xe đạp",
+                bottle: "Chai", cup: "Ly / Cốc", chair: "Ghế",
+                potted_plant: "Chậu cây", cell_phone: "Điện thoại",
+                laptop: "Laptop", book: "Sách"
+              };
+
+              function setStatus(state, text) {
+                statusBadge.classList.remove("good", "loading");
+                shutterBtn.classList.remove("ready");
+                if (state === "good") {
+                  statusBadge.classList.add("good");
+                  shutterBtn.classList.add("ready");
+                } else if (state === "loading") {
+                  statusBadge.classList.add("loading");
+                }
+                statusText.textContent = text;
+              }
+
+              async function initAI() {
+                try {
+                  setStatus("loading", "Đang tải mô hình AI...");
+                  const vision = await FilesetResolver.forVisionTasks(
+                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm"
+                  );
+                  const modelUrl =
+                    "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite";
+                  try {
+                    objectDetector = await ObjectDetector.createFromOptions(vision, {
+                      baseOptions: { modelAssetPath: modelUrl, delegate: "GPU" },
+                      runningMode: "VIDEO", scoreThreshold: 0.38, maxResults: 5
+                    });
+                  } catch {
+                    objectDetector = await ObjectDetector.createFromOptions(vision, {
+                      baseOptions: { modelAssetPath: modelUrl, delegate: "CPU" },
+                      runningMode: "VIDEO", scoreThreshold: 0.38, maxResults: 5
+                    });
+                  }
+                  setStatus("idle", "Đưa chủ thể vào khung");
+                } catch (err) {
+                  console.error("Lỗi tải AI:", err);
+                  setStatus("idle", "AI tạm lỗi (vẫn chụp được)");
+                }
+              }
+
+              async function startCamera() {
+                errorOverlay.classList.remove("show");
+                shutterBtn.disabled = true;
+                if (currentStream) {
+                  currentStream.getTracks().forEach((t) => t.stop());
+                  currentStream = null;
+                }
+                const constraintsList = [
+                  { audio: false, video: { facingMode: { exact: facingMode }, width: { ideal: 3840, min: 1280 }, height: { ideal: 2160, min: 720 } } },
+                  { audio: false, video: { facingMode: { ideal: facingMode }, width: { ideal: 1920 }, height: { ideal: 1080 } } },
+                  { audio: false, video: { facingMode: { ideal: facingMode } } }
+                ];
+                let stream = null;
+                let lastError = null;
+                for (const c of constraintsList) {
+                  try { stream = await navigator.mediaDevices.getUserMedia(c); break; } catch (err) { lastError = err; }
+                }
+                if (!stream) {
+                  errorOverlay.classList.add("show");
+                  errorDesc.textContent = lastError?.name === "NotAllowedError"
+                    ? "Bạn chưa cấp quyền Camera. Hãy mở Cài đặt và cho phép quyền Camera."
+                    : "Không tìm thấy camera phù hợp hoặc trang chưa chạy qua HTTPS.";
+                  return;
+                }
+                currentStream = stream;
+                video.srcObject = stream;
+                const isFront = facingMode === "user";
+                video.classList.toggle("mirrored", isFront);
+                canvas.classList.toggle("mirrored", isFront);
+                await new Promise((resolve) => { video.onloadedmetadata = () => resolve(); });
+                await video.play();
+                smoothedCrop = null;
+                latestDetections = [];
+                shutterBtn.disabled = false;
+                metaInfo.textContent = `${isFront ? "Cam trước" : "Cam sau"} • ${video.videoWidth}×${video.videoHeight} px`;
+                if (!rafId) rafId = requestAnimationFrame(renderLoop);
+              }
+
+              function pickMainSubject(detections, vidW, vidH) {
+                if (!detections || detections.length === 0) return null;
+                let best = null; let bestScore = -1;
+                for (const det of detections) {
+                  const box = det.boundingBox; const cat = det.categories?.[0];
+                  if (!box || !cat) continue;
+                  const relArea = (box.width * box.height) / (vidW * vidH);
+                  const cx = (box.originX + box.width / 2) / vidW;
+                  const cy = (box.originY + box.height / 2) / vidH;
+                  const centerDist = Math.hypot(cx - 0.5, cy - 0.5);
+                  const personBoost = cat.categoryName === "person" ? 1.45 : 1.0;
+                  const score = cat.score * personBoost * (0.65 + Math.min(relArea, 0.5)) * (1.2 - centerDist * 0.5);
+                  if (score > bestScore) { bestScore = score; best = det; }
+                }
+                return best;
+              }
+
+              function computeAutoCropBox(subject, vidW, vidH, ratio) {
+                let maxCropW = vidW * 0.88; let maxCropH = maxCropW / ratio;
+                if (maxCropH > vidH * 0.88) { maxCropH = vidH * 0.88; maxCropW = maxCropH * ratio; }
+                if (!subject) {
+                  return { x: (vidW - maxCropW) / 2, y: (vidH - maxCropH) / 2, w: maxCropW, h: maxCropH, hasSubject: false, good: false };
+                }
+                const b = subject.boundingBox;
+                const isPerson = subject.categories?.[0]?.categoryName === "person";
+                const reqW = b.width + b.width * 0.9;
+                const reqH = b.height + b.height * (isPerson ? 0.22 : 0.35) + b.height * 0.38;
+                let cropW = Math.max(reqW, reqH * ratio);
+                let cropH = cropW / ratio;
+                const minW = vidW * 0.42;
+                if (cropW < minW) { cropW = minW; cropH = cropW / ratio; }
+                if (cropW > vidW) { cropW = vidW; cropH = cropW / ratio; }
+                if (cropH > vidH) { cropH = vidH; cropW = cropH * ratio; }
+                const subjCx = b.originX + b.width / 2;
+                const subjFocusY = isPerson ? b.originY + b.height * 0.28 : b.originY + b.height / 2;
+                let targetAnchorX = 0.5;
+                if (b.width < cropW * 0.48) targetAnchorX = subjCx < vidW / 2 ? 0.36 : 0.64;
+                const targetAnchorY = isPerson ? 0.34 : 0.44;
+                let cropX = Math.max(0, Math.min(vidW - cropW, subjCx - cropW * targetAnchorX));
+                let cropY = Math.max(0, Math.min(vidH - cropH, subjFocusY - cropH * targetAnchorY));
+                const insideLeft = b.originX >= cropX + cropW * 0.03;
+                const insideRight = b.originX + b.width <= cropX + cropW * 0.97;
+                const insideTop = b.originY >= cropY + cropH * 0.03;
+                const insideBottom = b.originY + b.height <= cropY + cropH * 0.97;
+                const areaRatio = (b.width * b.height) / (cropW * cropH);
+                const relCx = (subjCx - cropX) / cropW;
+                const relCy = (subjFocusY - cropY) / cropH;
+                const xBalanced = Math.abs(relCx - 1 / 3) < 0.14 || Math.abs(relCx - 2 / 3) < 0.14 || Math.abs(relCx - 0.5) < 0.12;
+                const yBalanced = Math.abs(relCy - 1 / 3) < 0.15 || Math.abs(relCy - 0.5) < 0.15;
+                const good = insideLeft && insideRight && insideTop && insideBottom && areaRatio >= 0.08 && areaRatio <= 0.82 && xBalanced && yBalanced;
+                return { x: cropX, y: cropY, w: cropW, h: cropH, hasSubject: true, good };
+              }
+
+              function lerp(a, b, t) { return a + (b - a) * t; }
+
+              function syncCanvasSize() {
+                const dpr = Math.min(window.devicePixelRatio || 1, 2);
+                const w = stage.clientWidth; const h = stage.clientHeight;
+                if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+                  canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+                }
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                return { viewW: w, viewH: h };
+              }
+
+              function drawOverlay(viewW, viewH, vidW, vidH, crop, mainSubject) {
+                ctx.clearRect(0, 0, viewW, viewH);
+                const scale = Math.max(viewW / vidW, viewH / vidH);
+                const offsetX = (viewW - vidW * scale) / 2;
+                const offsetY = (viewH - vidH * scale) / 2;
+                const sx = crop.x * scale + offsetX;
+                const sy = crop.y * scale + offsetY;
+                const sw = crop.w * scale;
+                const sh = crop.h * scale;
+
+                ctx.save();
+                ctx.fillStyle = "rgba(0, 0, 0, 0.46)";
+                ctx.beginPath(); ctx.rect(0, 0, viewW, viewH); ctx.rect(sx, sy, sw, sh);
+                ctx.fill("evenodd");
+                ctx.restore();
+
+                ctx.save();
+                ctx.strokeStyle = crop.good ? "rgba(134, 239, 172, 0.45)" : "rgba(255, 255, 255, 0.28)";
+                ctx.lineWidth = 1;
+                for (let i = 1; i <= 2; i++) {
+                  const vx = sx + (sw * i) / 3;
+                  ctx.beginPath(); ctx.moveTo(vx, sy); ctx.lineTo(vx, sy + sh); ctx.stroke();
+                  const hy = sy + (sh * i) / 3;
+                  ctx.beginPath(); ctx.moveTo(sx, hy); ctx.lineTo(sx + sw, hy); ctx.stroke();
+                }
+                ctx.fillStyle = crop.good ? "rgba(34, 197, 94, 0.85)" : "rgba(255, 255, 255, 0.45)";
+                for (let ix = 1; ix <= 2; ix++) {
+                  for (let iy = 1; iy <= 2; iy++) {
+                    ctx.beginPath(); ctx.arc(sx + (sw * ix) / 3, sy + (sh * iy) / 3, 2.5, 0, Math.PI * 2); ctx.fill();
+                  }
+                }
+                ctx.restore();
+
+                ctx.save();
+                ctx.strokeStyle = crop.good ? "#22c55e" : "#ffffff";
+                ctx.lineWidth = crop.good ? 2.5 : 1.5;
+                ctx.strokeRect(sx, sy, sw, sh);
+                const corner = 22;
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.moveTo(sx, sy + corner); ctx.lineTo(sx, sy); ctx.lineTo(sx + corner, sy);
+                ctx.moveTo(sx + sw - corner, sy); ctx.lineTo(sx + sw, sy); ctx.lineTo(sx + sw, sy + corner);
+                ctx.moveTo(sx, sy + sh - corner); ctx.lineTo(sx, sy + sh); ctx.lineTo(sx + corner, sy + sh);
+                ctx.moveTo(sx + sw - corner, sy + sh); ctx.lineTo(sx + sw, sy + sh); ctx.lineTo(sx + sw, sy + sh - corner);
+                ctx.stroke();
+                ctx.restore();
+
+                if (mainSubject && aiEnabled) {
+                  const b = mainSubject.boundingBox;
+                  const bx = b.originX * scale + offsetX;
+                  const by = b.originY * scale + offsetY;
+                  const bw = b.width * scale;
+                  const bh = b.height * scale;
+                  ctx.save();
+                  ctx.setLineDash([6, 5]);
+                  ctx.strokeStyle = crop.good ? "rgba(34, 197, 94, 0.9)" : "rgba(245, 158, 11, 0.9)";
+                  ctx.lineWidth = 1.6;
+                  ctx.strokeRect(bx, by, bw, bh);
+                  ctx.restore();
+                  if (facingMode !== "user") {
+                    const cat = mainSubject.categories?.[0];
+                    const labelName = LABEL_VI[cat?.categoryName] || cat?.categoryName || "Chủ thể";
+                    const pct = Math.round((cat?.score || 0) * 100);
+                    const tag = `${labelName} ${pct}%`;
+                    ctx.save();
+                    ctx.font = "600 12px -apple-system, sans-serif";
+                    const tw = ctx.measureText(tag).width + 14;
+                    const tx = Math.max(8, Math.min(viewW - tw - 8, bx));
+                    const ty = Math.max(24, by - 8);
+                    ctx.fillStyle = "rgba(0,0,0,0.72)";
+                    ctx.fillRect(tx, ty - 16, tw, 20);
+                    ctx.fillStyle = crop.good ? "#86efac" : "#fde68a";
+                    ctx.fillText(tag, tx + 7, ty - 2);
+                    ctx.restore();
+                  }
+                }
+              }
+
+              function renderLoop(now) {
+                rafId = requestAnimationFrame(renderLoop);
+                if (!video.videoWidth || !video.videoHeight || video.paused) return;
+                const vidW = video.videoWidth; const vidH = video.videoHeight;
+                const { viewW, viewH } = syncCanvasSize();
+                if (aiEnabled && objectDetector && video.currentTime !== lastVideoTime && now - lastInferTime > 55) {
+                  lastVideoTime = video.currentTime;
+                  const ts = Math.max(lastInferTime + 1, Math.round(now));
+                  lastInferTime = ts;
+                  try {
+                    const result = objectDetector.detectForVideo(video, ts);
+                    latestDetections = result?.detections || [];
+                  } catch (e) {}
+                }
+                const mainSubject = aiEnabled ? pickMainSubject(latestDetections, vidW, vidH) : null;
+                const targetCrop = computeAutoCropBox(mainSubject, vidW, vidH, targetRatio);
+                if (!smoothedCrop) {
+                  smoothedCrop = { ...targetCrop };
+                } else {
+                  smoothedCrop.x = lerp(smoothedCrop.x, targetCrop.x, 0.22);
+                  smoothedCrop.y = lerp(smoothedCrop.y, targetCrop.y, 0.22);
+                  smoothedCrop.w = lerp(smoothedCrop.w, targetCrop.w, 0.22);
+                  smoothedCrop.h = lerp(smoothedCrop.h, targetCrop.h, 0.22);
+                  smoothedCrop.hasSubject = targetCrop.hasSubject;
+                  smoothedCrop.good = targetCrop.good;
+                }
+                if (!aiEnabled) setStatus("idle", "AI đang tắt • Khung thủ công");
+                else if (!objectDetector) setStatus("loading", "Đang tải mô hình AI...");
+                else if (smoothedCrop.good) setStatus("good", "Bố cục chuẩn");
+                else if (smoothedCrop.hasSubject) setStatus("idle", "Căn chỉnh nhẹ vào lưới 1/3");
+                else setStatus("idle", "Đưa chủ thể vào khung");
+                drawOverlay(viewW, viewH, vidW, vidH, smoothedCrop, mainSubject);
+              }
+
+              async function captureFullRes() {
+                if (!video.videoWidth || !smoothedCrop) return;
+                flashEl.classList.add("active");
+                setTimeout(() => flashEl.classList.remove("active"), 130);
+                const sx = Math.max(0, Math.round(smoothedCrop.x));
+                const sy = Math.max(0, Math.round(smoothedCrop.y));
+                const sw = Math.min(video.videoWidth - sx, Math.round(smoothedCrop.w));
+                const sh = Math.min(video.videoHeight - sy, Math.round(smoothedCrop.h));
+                const outCanvas = document.createElement("canvas");
+                outCanvas.width = sw; outCanvas.height = sh;
+                const outCtx = outCanvas.getContext("2d");
+                if (facingMode === "user") { outCtx.translate(sw, 0); outCtx.scale(-1, 1); }
+                outCtx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+                capturedDataUrl = outCanvas.toDataURL("image/jpeg", 0.95);
+                capturedBlob = await new Promise((res) => outCanvas.toBlob(res, "image/jpeg", 0.95));
+                previewImg.src = capturedDataUrl;
+                previewRes.textContent = `${sw} × ${sh} px`;
+                previewModal.classList.add("open");
+              }
+
+              function downloadPhoto() {
+                if (!capturedDataUrl) return;
+                const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+                const fileName = `AI_Cam_${stamp}.jpg`;
+                if (window.AndroidBridge && typeof window.AndroidBridge.saveImage === "function") {
+                  window.AndroidBridge.saveImage(capturedDataUrl, fileName);
+                  return;
+                }
+                const url = URL.createObjectURL(capturedBlob);
+                const a = document.createElement("a");
+                a.href = url; a.download = fileName;
+                document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 1500);
+              }
+
+              shutterBtn.addEventListener("click", captureFullRes);
+              switchCamBtn.addEventListener("click", () => {
+                facingMode = facingMode === "environment" ? "user" : "environment";
+                startCamera();
+              });
+              toggleAiBtn.addEventListener("click", () => {
+                aiEnabled = !aiEnabled;
+                toggleAiBtn.querySelector("span").textContent = aiEnabled ? "🤖 AI: Bật" : "🤖 AI: Tắt";
+                if (!aiEnabled) latestDetections = [];
+              });
+              ratioBtns.forEach((btn) => {
+                btn.addEventListener("click", () => {
+                  ratioBtns.forEach((b) => b.classList.remove("active"));
+                  btn.classList.add("active");
+                  targetRatio = parseFloat(btn.dataset.ratio);
+                });
+              });
+              retakeBtn.addEventListener("click", () => {
+                previewModal.classList.remove("open");
+                capturedDataUrl = null; capturedBlob = null;
+              });
+              window.closePreviewIfOpen = () => {
+                if (previewModal.classList.contains("open")) {
+                  previewModal.classList.remove("open");
+                  capturedDataUrl = null; capturedBlob = null;
+                  return true;
+                }
+                return false;
+              };
+              downloadBtn.addEventListener("click", downloadPhoto);
+              retryBtn.addEventListener("click", startCamera);
+
+              initAI();
+              startCamera();
+            </script>
+          </body>
+          </html>
+          HTML_EOF
+
+      - name: Build Debug APK
+        run: gradle assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI-Camera-OPPO-Reno11
+          path: app/build/outputs/apk/debug/app-debug.apk
