@@ -547,4 +547,791 @@ jobs:
               .mini-reset {
                 border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.08);
                 color: #e4e4e7; font-size: 10.5px; font-weight: 600;
-                padding: 2px
+                padding: 2px 8px; border-radius: 999px; cursor: pointer;
+              }
+
+              .range-track {
+                -webkit-appearance: none; appearance: none; width: 100%; height: 8px;
+                border-radius: 999px; outline: none; margin: 4px 0;
+              }
+
+              .range-temp {
+                background: linear-gradient(90deg, #3b82f6 0%, #e4e4e7 50%, #f59e0b 100%);
+              }
+
+              .range-intensity {
+                background: linear-gradient(90deg, #27272a 0%, #22c55e 100%);
+              }
+
+              .range-track::-webkit-slider-thumb {
+                -webkit-appearance: none; appearance: none;
+                width: 22px; height: 22px; border-radius: 50%;
+                background: #ffffff; border: 2px solid #09090b;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.55); cursor: pointer;
+              }
+
+              .lut-header {
+                display: flex; align-items: center; justify-content: space-between;
+                font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.88);
+              }
+
+              .add-lut-btn {
+                border: 1px solid rgba(74, 222, 128, 0.45); background: rgba(20, 83, 45, 0.45);
+                color: #bbf7d0; font-size: 11.5px; font-weight: 700;
+                padding: 5px 11px; border-radius: 999px; cursor: pointer;
+                display: inline-flex; align-items: center; gap: 4px;
+              }
+
+              .lut-strip {
+                display: flex; align-items: center; gap: 8px;
+                overflow-x: auto; padding-bottom: 2px; scrollbar-width: none;
+              }
+
+              .lut-strip::-webkit-scrollbar { display: none; }
+
+              .lut-card {
+                position: relative; flex: 0 0 auto; min-width: 78px;
+                padding: 8px 10px; border-radius: 14px;
+                background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+                color: #d4d4d8; font-size: 11.5px; font-weight: 600;
+                display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer;
+                transition: all 0.16s ease;
+              }
+
+              .lut-card.active {
+                background: rgba(255,255,255,0.16); border-color: #4ade80; color: #ffffff;
+                box-shadow: 0 0 14px rgba(34, 197, 94, 0.25);
+              }
+
+              .lut-swatch {
+                width: 24px; height: 24px; border-radius: 50%;
+                border: 1.5px solid rgba(255,255,255,0.35);
+              }
+
+              .lut-name {
+                max-width: 74px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+              }
+
+              .lut-del {
+                position: absolute; top: 3px; right: 4px; width: 16px; height: 16px;
+                border-radius: 50%; border: none; background: rgba(239,68,68,0.85);
+                color: #fff; font-size: 10px; font-weight: 800; line-height: 16px;
+                text-align: center; padding: 0; cursor: pointer;
+              }
+
+              .bottom-dock {
+                position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
+                padding: 24px 26px calc(var(--safe-bottom) + 18px);
+                background: linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.65) 60%, rgba(0,0,0,0) 100%);
+                display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+              }
+
+              .dock-btn {
+                width: 52px; height: 52px; border-radius: 50%;
+                border: 1px solid var(--border); background: var(--glass);
+                backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+                color: #fff; display: flex; align-items: center; justify-content: center;
+                cursor: pointer; transition: transform 0.14s ease, background 0.2s ease;
+              }
+
+              .dock-btn:active { transform: scale(0.92); background: rgba(255,255,255,0.18); }
+              .dock-btn.left { justify-self: start; }
+              .dock-btn.right {
+                justify-self: end; width: auto; padding: 0 14px; border-radius: 999px;
+                gap: 6px; font-size: 12.5px; font-weight: 700;
+              }
+
+              .dock-btn.active-panel {
+                border-color: #fde68a; background: rgba(245, 158, 11, 0.28); color: #fef3c7;
+              }
+
+              .shutter-wrap { position: relative; display: flex; align-items: center; justify-content: center; }
+
+              .shutter-btn {
+                width: 78px; height: 78px; border-radius: 50%;
+                border: 3.5px solid rgba(255,255,255,0.92); background: rgba(255,255,255,0.08);
+                padding: 5px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+                transition: all 0.22s ease; box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+              }
+
+              .shutter-core {
+                width: 100%; height: 100%; border-radius: 50%; background: #ffffff;
+                transition: transform 0.12s ease, background 0.25s ease;
+              }
+
+              .shutter-btn.ready { border-color: #4ade80; box-shadow: 0 0 24px var(--green-glow); }
+              .shutter-btn.ready .shutter-core { background: #22c55e; }
+              .shutter-btn:active .shutter-core { transform: scale(0.86); }
+              .shutter-btn:disabled { opacity: 0.4; pointer-events: none; }
+
+              .modal-backdrop {
+                position: fixed; inset: 0; z-index: 35;
+                background: rgba(0,0,0,0.72); backdrop-filter: blur(8px);
+                display: none; align-items: flex-end; justify-content: center;
+                padding: 16px 14px calc(var(--safe-bottom) + 14px);
+              }
+
+              .modal-backdrop.open { display: flex; }
+
+              .source-sheet {
+                width: 100%; max-width: 440px; border-radius: 22px;
+                background: #141418; border: 1px solid rgba(255,255,255,0.14);
+                padding: 18px; display: flex; flex-direction: column; gap: 14px;
+              }
+
+              .source-title {
+                display: flex; align-items: center; justify-content: space-between;
+                font-size: 16px; font-weight: 700;
+              }
+
+              .close-x {
+                width: 30px; height: 30px; border-radius: 50%; border: none;
+                background: rgba(255,255,255,0.1); color: #fff; font-size: 16px; cursor: pointer;
+              }
+
+              .source-note {
+                font-size: 12px; line-height: 1.45; color: var(--muted);
+                background: rgba(34, 197, 94, 0.08); border: 1px solid rgba(74, 222, 128, 0.22);
+                padding: 10px 12px; border-radius: 12px;
+              }
+
+              .url-box { display: flex; gap: 8px; }
+
+              .url-input {
+                flex: 1; min-height: 46px; border-radius: 12px;
+                border: 1px solid rgba(255,255,255,0.16); background: #09090b;
+                color: #fff; padding: 0 12px; font-size: 13px; outline: none;
+                user-select: text;
+              }
+
+              .url-input:focus { border-color: #4ade80; }
+
+              .preview-modal {
+                position: fixed; inset: 0; z-index: 30; background: #070709;
+                display: none; flex-direction: column;
+                padding: calc(var(--safe-top) + 14px) 18px calc(var(--safe-bottom) + 20px);
+              }
+
+              .preview-modal.open { display: flex; animation: fadeIn 0.18s ease-out; }
+              @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+              .preview-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+              .preview-heading { display: flex; flex-direction: column; gap: 2px; }
+              .preview-title { font-size: 16px; font-weight: 700; }
+              .preview-sub { font-size: 12px; color: var(--muted); }
+
+              .preview-res-badge {
+                font-size: 12px; font-weight: 700; color: #86efac;
+                background: rgba(34, 197, 94, 0.16); border: 1px solid rgba(74, 222, 128, 0.35);
+                padding: 5px 11px; border-radius: 999px;
+              }
+
+              .preview-frame {
+                flex: 1; display: flex; align-items: center; justify-content: center;
+                overflow: hidden; border-radius: 18px; background: #0e0e12;
+                border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+              }
+
+              .preview-frame img { max-width: 100%; max-height: 100%; object-fit: contain; }
+              .preview-actions { display: grid; grid-template-columns: 1fr 1.45fr; gap: 12px; margin-top: 16px; }
+
+              .action-btn {
+                min-height: 50px; border-radius: 14px; border: 1px solid var(--border);
+                font-size: 14px; font-weight: 700; cursor: pointer;
+                display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+                transition: transform 0.12s ease;
+              }
+
+              .action-btn:active { transform: scale(0.97); }
+              .btn-retake { background: #1e1e24; color: var(--text); }
+              .btn-save {
+                background: linear-gradient(135deg, #22c55e, #16a34a); color: #032210;
+                border-color: #4ade80; box-shadow: 0 8px 24px rgba(34, 197, 94, 0.25);
+              }
+
+              .error-sheet {
+                position: absolute; inset: 0; z-index: 25; background: rgba(5, 5, 7, 0.94);
+                display: none; flex-direction: column; align-items: center; justify-content: center;
+                text-align: center; padding: 32px; gap: 14px;
+              }
+              .error-sheet.show { display: flex; }
+              .error-sheet h2 { margin: 0; font-size: 19px; }
+              .error-sheet p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--muted); max-width: 320px; }
+
+              .toast-pill {
+                position: fixed; top: calc(var(--safe-top) + 64px); left: 50%; transform: translateX(-50%);
+                z-index: 50; background: rgba(24, 24, 29, 0.94); border: 1px solid rgba(255,255,255,0.18);
+                color: #fff; font-size: 12.5px; font-weight: 600; padding: 9px 16px;
+                border-radius: 999px; display: none; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+                white-space: nowrap;
+              }
+              .toast-pill.show { display: block; }
+
+              .flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 40; transition: opacity 0.16s ease; }
+              .flash.active { opacity: 0.72; transition: none; }
+            </style>
+          </head>
+          <body>
+            <div class="app">
+              <div class="stage" id="stage">
+                <video id="cameraVideo" autoplay playsinline muted></video>
+                <canvas id="glCanvas"></canvas>
+                <canvas id="overlayCanvas"></canvas>
+
+                <div class="top-hud">
+                  <div class="top-row">
+                    <div class="status-pill loading" id="statusBadge">
+                      <span class="status-dot"></span>
+                      <span id="statusText">Đang khởi động AI...</span>
+                    </div>
+
+                    <div class="top-controls">
+                      <button class="ai-chip-btn on" id="toggleAiBtn" aria-label="Bật tắt AI">
+                        <span id="aiLabel">AI Bật</span>
+                      </button>
+                      <div class="ratio-switch" role="group" aria-label="Tỷ lệ khung cắt">
+                        <button class="ratio-btn active" data-ratio="0.8">4:5</button>
+                        <button class="ratio-btn" data-ratio="0.75">3:4</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="telemetry-bar">
+                    <span class="tele-chip" id="metaInfo">CAMERA • ĐANG MỞ...</span>
+                    <span class="tele-chip" id="colorInfo">Gốc • 5500K</span>
+                  </div>
+                </div>
+
+                <div class="color-drawer" id="colorDrawer">
+                  <div class="slider-row">
+                    <div class="slider-head">
+                      <span class="slider-label">
+                        Nhiệt độ màu
+                        <button class="mini-reset" id="resetTempBtn">5500K</button>
+                      </span>
+                      <span class="slider-val" id="tempVal">5500K • Chuẩn</span>
+                    </div>
+                    <input type="range" class="range-track range-temp" id="tempSlider" min="2500" max="8500" step="100" value="5500" />
+                  </div>
+
+                  <div class="slider-row" id="intensityRow" style="display: none;">
+                    <div class="slider-head">
+                      <span class="slider-label">Cường độ LUT</span>
+                      <span class="slider-val" id="intensityVal" style="color: #86efac;">85%</span>
+                    </div>
+                    <input type="range" class="range-track range-intensity" id="intensitySlider" min="0" max="100" step="5" value="85" />
+                  </div>
+
+                  <div class="lut-header">
+                    <span>Bộ màu 3D LUT</span>
+                    <button class="add-lut-btn" id="openSourceBtn">+ Thêm LUT</button>
+                  </div>
+
+                  <div class="lut-strip" id="lutStrip"></div>
+                </div>
+
+                <div class="error-sheet" id="errorOverlay">
+                  <h2>Không thể mở Camera</h2>
+                  <p id="errorDesc">Vui lòng cấp quyền Camera trong cài đặt ứng dụng.</p>
+                  <button class="action-btn btn-save" id="retryBtn" style="padding: 0 28px;">Thử lại</button>
+                </div>
+
+                <div class="bottom-dock">
+                  <button class="dock-btn left" id="switchCamBtn" aria-label="Đổi camera">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                      <path d="M3 3v5h5"/>
+                      <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                      <path d="M16 16h5v5"/>
+                    </svg>
+                  </button>
+
+                  <div class="shutter-wrap">
+                    <button class="shutter-btn" id="shutterBtn" aria-label="Chụp ảnh" disabled>
+                      <span class="shutter-core"></span>
+                    </button>
+                  </div>
+
+                  <button class="dock-btn right" id="toggleColorBtn" aria-label="Màu và LUT">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/>
+                      <circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/>
+                      <circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/>
+                      <circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/>
+                      <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>
+                    </svg>
+                    <span>Màu / LUT</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="modal-backdrop" id="sourceModal">
+              <div class="source-sheet">
+                <div class="source-title">
+                  <span>Nạp LUT từ nguồn an toàn</span>
+                  <button class="close-x" id="closeSourceBtn">✕</button>
+                </div>
+                <div class="source-note">
+                  Chỉ đọc định dạng văn bản chuẩn <b>.cube</b> (3D/1D LUT từ DaVinci, Lightroom, Fuji/Kodak...), giới hạn dưới 5MB, kiểm tra an toàn trước khi áp và lưu offline vào máy.
+                </div>
+
+                <input type="file" id="lutFileInput" accept=".cube,.txt" style="display:none;" />
+                <button class="action-btn btn-save" id="pickFileBtn">Chọn file .cube từ điện thoại</button>
+
+                <div class="url-box">
+                  <input type="url" class="url-input" id="lutUrlInput" placeholder="Hoặc dán link https://.../film.cube" />
+                  <button class="action-btn btn-retake" id="loadUrlBtn" style="padding: 0 16px;">Tải</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="preview-modal" id="previewModal">
+              <div class="preview-top">
+                <div class="preview-heading">
+                  <div class="preview-title">Bố cục hoàn tất</div>
+                  <div class="preview-sub" id="previewSub">Đã cắt độ phân giải gốc</div>
+                </div>
+                <div class="preview-res-badge" id="previewRes">0 × 0 px</div>
+              </div>
+              <div class="preview-frame">
+                <img id="previewImg" alt="Ảnh đã chụp" />
+              </div>
+              <div class="preview-actions">
+                <button class="action-btn btn-retake" id="retakeBtn">Chụp lại</button>
+                <button class="action-btn btn-save" id="downloadBtn">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  <span>Tải ảnh về</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="toast-pill" id="toastEl"></div>
+            <div class="flash" id="flashEl"></div>
+
+            <script type="module">
+              import { FilesetResolver, ObjectDetector } from "./mediapipe/vision_bundle.mjs";
+
+              const video = document.getElementById("cameraVideo");
+              const glCanvas = document.getElementById("glCanvas");
+              const overlayCanvas = document.getElementById("overlayCanvas");
+              const ctx = overlayCanvas.getContext("2d");
+              const stage = document.getElementById("stage");
+
+              const statusBadge = document.getElementById("statusBadge");
+              const statusText = document.getElementById("statusText");
+              const metaInfo = document.getElementById("metaInfo");
+              const colorInfo = document.getElementById("colorInfo");
+              const shutterBtn = document.getElementById("shutterBtn");
+              const switchCamBtn = document.getElementById("switchCamBtn");
+              const toggleAiBtn = document.getElementById("toggleAiBtn");
+              const aiLabel = document.getElementById("aiLabel");
+              const ratioBtns = document.querySelectorAll(".ratio-btn");
+
+              const toggleColorBtn = document.getElementById("toggleColorBtn");
+              const colorDrawer = document.getElementById("colorDrawer");
+              const tempSlider = document.getElementById("tempSlider");
+              const tempVal = document.getElementById("tempVal");
+              const resetTempBtn = document.getElementById("resetTempBtn");
+              const intensityRow = document.getElementById("intensityRow");
+              const intensitySlider = document.getElementById("intensitySlider");
+              const intensityVal = document.getElementById("intensityVal");
+              const lutStrip = document.getElementById("lutStrip");
+
+              const openSourceBtn = document.getElementById("openSourceBtn");
+              const sourceModal = document.getElementById("sourceModal");
+              const closeSourceBtn = document.getElementById("closeSourceBtn");
+              const pickFileBtn = document.getElementById("pickFileBtn");
+              const lutFileInput = document.getElementById("lutFileInput");
+              const lutUrlInput = document.getElementById("lutUrlInput");
+              const loadUrlBtn = document.getElementById("loadUrlBtn");
+
+              const errorOverlay = document.getElementById("errorOverlay");
+              const errorDesc = document.getElementById("errorDesc");
+              const retryBtn = document.getElementById("retryBtn");
+              const previewModal = document.getElementById("previewModal");
+              const previewImg = document.getElementById("previewImg");
+              const previewRes = document.getElementById("previewRes");
+              const previewSub = document.getElementById("previewSub");
+              const retakeBtn = document.getElementById("retakeBtn");
+              const downloadBtn = document.getElementById("downloadBtn");
+              const toastEl = document.getElementById("toastEl");
+              const flashEl = document.getElementById("flashEl");
+
+              const aiCanvas = document.createElement("canvas");
+              const aiCtx = aiCanvas.getContext("2d", { willReadFrequently: false });
+
+              let objectDetector = null;
+              let currentStream = null;
+              let facingMode = "environment";
+              let targetRatio = 4 / 5;
+              let aiEnabled = true;
+              let rafId = null;
+              let aiTimerId = null;
+              let isInferring = false;
+              let lastInferTs = 0;
+
+              let smoothedCrop = null;
+              let latestDetections = [];
+              let capturedDataUrl = null;
+              let capturedBlob = null;
+
+              let kelvin = 5500;
+              let lutIntensity = 0.85;
+              let activeLutId = "none";
+              let lutList = [];
+
+              const LABEL_VI = {
+                person: "Người", cat: "Mèo", dog: "Chó", bird: "Chim",
+                car: "Ô tô", motorcycle: "Xe máy", bicycle: "Xe đạp",
+                bottle: "Chai", cup: "Ly / Cốc", chair: "Ghế",
+                potted_plant: "Chậu cây", cell_phone: "Điện thoại",
+                laptop: "Laptop", book: "Sách"
+              };
+
+              function showToast(msg) {
+                toastEl.textContent = msg;
+                toastEl.classList.add("show");
+                clearTimeout(showToast._t);
+                showToast._t = setTimeout(() => toastEl.classList.remove("show"), 2600);
+              }
+
+              function getTempGains(k) {
+                const t = Math.max(-1, Math.min(1, (k - 5500) / 3000));
+                let r = 1, g = 1, b = 1;
+                if (t >= 0) {
+                  r = 1 + 0.28 * t;
+                  g = 1 + 0.04 * t;
+                  b = 1 - 0.28 * t;
+                } else {
+                  const c = -t;
+                  r = 1 - 0.24 * c;
+                  g = 1 - 0.02 * c;
+                  b = 1 + 0.30 * c;
+                }
+                const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                return [r / lum, g / lum, b / lum];
+              }
+
+              function buildProceduralLUT(size, transformFn) {
+                const data = new Uint8Array(size * size * size * 4);
+                let ptr = 0;
+                for (let b = 0; b < size; b++) {
+                  const fb = b / (size - 1);
+                  for (let g = 0; g < size; g++) {
+                    const fg = g / (size - 1);
+                    for (let r = 0; r < size; r++) {
+                      const fr = r / (size - 1);
+                      const [or, og, ob] = transformFn(fr, fg, fb);
+                      data[ptr++] = Math.max(0, Math.min(255, Math.round(or * 255)));
+                      data[ptr++] = Math.max(0, Math.min(255, Math.round(og * 255)));
+                      data[ptr++] = Math.max(0, Math.min(255, Math.round(ob * 255)));
+                      data[ptr++] = 255;
+                    }
+                  }
+                }
+                return { size, data };
+              }
+
+              function sCurve(v, strength) {
+                const c = v - 0.5;
+                return Math.max(0, Math.min(1, v + strength * c * (0.25 - c * c)));
+              }
+
+              function createBuiltinLuts() {
+                const N = 17;
+                return [
+                  { id: "none", name: "Gốc", swatch: "linear-gradient(135deg,#e4e4e7,#52525b)", custom: false, size: 2, data: null },
+                  {
+                    id: "fuji", name: "Fuji Pro", swatch: "linear-gradient(135deg,#34d399,#0f766e)", custom: false,
+                    ...buildProceduralLUT(N, (r, g, b) => {
+                      r = sCurve(r, 0.55); g = sCurve(g, 0.6); b = sCurve(b, 0.5);
+                      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+                      r = lum + (r - lum) * 0.92;
+                      g = lum + (g - lum) * 1.04;
+                      b = lum + (b - lum) * 0.96;
+                      const sh = Math.pow(1 - lum, 2);
+                      return [r * 0.96 + 0.02, g * 0.98 + 0.03 * sh + 0.015, b * 0.97 + 0.04 * sh + 0.02];
+                    })
+                  },
+                  {
+                    id: "kodak", name: "Kodak Gold", swatch: "linear-gradient(135deg,#fbbf24,#b45309)", custom: false,
+                    ...buildProceduralLUT(N, (r, g, b) => {
+                      r = sCurve(r, 0.65); g = sCurve(g, 0.58); b = sCurve(b, 0.45);
+                      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+                      r = lum + (r - lum) * 1.12;
+                      g = lum + (g - lum) * 1.04;
+                      b = lum + (b - lum) * 0.88;
+                      return [r * 1.03 + 0.025, g * 1.0 + 0.015, b * 0.89 + 0.01];
+                    })
+                  },
+                  {
+                    id: "teal", name: "Cine Teal", swatch: "linear-gradient(135deg,#06b6d4,#f97316)", custom: false,
+                    ...buildProceduralLUT(N, (r, g, b) => {
+                      r = sCurve(r, 0.8); g = sCurve(g, 0.72); b = sCurve(b, 0.75);
+                      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+                      const sh = Math.pow(1 - lum, 1.6);
+                      const hi = Math.pow(lum, 1.5);
+                      return [
+                        r * 0.96 - 0.06 * sh + 0.09 * hi,
+                        g * 0.98 + 0.04 * sh + 0.02 * hi,
+                        b * 0.98 + 0.10 * sh - 0.08 * hi
+                      ];
+                    })
+                  },
+                  {
+                    id: "leica", name: "Leica B&W", swatch: "linear-gradient(135deg,#ffffff,#18181b)", custom: false,
+                    ...buildProceduralLUT(N, (r, g, b) => {
+                      const lum = 0.26 * r + 0.62 * g + 0.12 * b;
+                      const m = sCurve(lum, 1.15);
+                      return [m, m, m];
+                    })
+                  },
+                  {
+                    id: "moody", name: "Moody Film", swatch: "linear-gradient(135deg,#64748b,#0f172a)", custom: false,
+                    ...buildProceduralLUT(N, (r, g, b) => {
+                      r = sCurve(r, 0.45); g = sCurve(g, 0.45); b = sCurve(b, 0.5);
+                      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+                      r = lum + (r - lum) * 0.72;
+                      g = lum + (g - lum) * 0.76;
+                      b = lum + (b - lum) * 0.82;
+                      return [r * 0.90 + 0.035, g * 0.91 + 0.038, b * 0.94 + 0.045];
+                    })
+                  }
+                ];
+              }
+
+              function parseCubeFile(text, fallbackName) {
+                if (typeof text !== "string" || text.length > 6 * 1024 * 1024) {
+                  throw new Error("File quá lớn (tối đa 5MB)");
+                }
+                if (text.includes("<html") || text.includes("<script")) {
+                  throw new Error("Không phải file LUT .cube hợp lệ");
+                }
+
+                const lines = text.split(/\r?\n/);
+                let title = fallbackName.replace(/\.(cube|txt)$/i, "").slice(0, 22) || "LUT Tùy chỉnh";
+                let size3D = 0;
+                let size1D = 0;
+                let dMin = [0, 0, 0];
+                let dMax = [1, 1, 1];
+                const rawTriplets = [];
+
+                for (let rawLine of lines) {
+                  const line = rawLine.trim();
+                  if (!line || line.startsWith("#")) continue;
+                  if (line.startsWith("TITLE")) {
+                    const m = line.match(/TITLE\s+"?([^"]+)"?/i);
+                    if (m && m[1]) title = m[1].trim().slice(0, 22);
+                    continue;
+                  }
+                  if (line.startsWith("LUT_3D_SIZE")) {
+                    size3D = parseInt(line.split(/\s+/)[1], 10);
+                    continue;
+                  }
+                  if (line.startsWith("LUT_1D_SIZE")) {
+                    size1D = parseInt(line.split(/\s+/)[1], 10);
+                    continue;
+                  }
+                  if (line.startsWith("DOMAIN_MIN")) {
+                    const p = line.split(/\s+/).slice(1).map(Number);
+                    if (p.length === 3 && p.every(Number.isFinite)) dMin = p;
+                    continue;
+                  }
+                  if (line.startsWith("DOMAIN_MAX")) {
+                    const p = line.split(/\s+/).slice(1).map(Number);
+                    if (p.length === 3 && p.every(Number.isFinite)) dMax = p;
+                    continue;
+                  }
+                  if (/^[A-Za-z_]/.test(line)) continue;
+
+                  const parts = line.split(/\s+/);
+                  if (parts.length >= 3) {
+                    const r = Number(parts[0]);
+                    const g = Number(parts[1]);
+                    const b = Number(parts[2]);
+                    if (Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b)) {
+                      rawTriplets.push(r, g, b);
+                    }
+                  }
+                }
+
+                const norm = (v, idx) => {
+                  const span = dMax[idx] - dMin[idx] || 1;
+                  return Math.max(0, Math.min(1, (v - dMin[idx]) / span));
+                };
+
+                if (size1D >= 2 && size1D <= 4096 && rawTriplets.length >= size1D * 3 && size3D === 0) {
+                  const outSize = 17;
+                  const sample1D = (u, ch) => {
+                    const pos = u * (size1D - 1);
+                    const i0 = Math.floor(pos);
+                    const i1 = Math.min(size1D - 1, i0 + 1);
+                    const f = pos - i0;
+                    const v0 = norm(rawTriplets[i0 * 3 + ch], ch);
+                    const v1 = norm(rawTriplets[i1 * 3 + ch], ch);
+                    return v0 + (v1 - v0) * f;
+                  };
+                  const out = buildProceduralLUT(outSize, (r, g, b) => [
+                    sample1D(r, 0), sample1D(g, 1), sample1D(b, 2)
+                  ]);
+                  return { name: title, size: out.size, data: out.data };
+                }
+
+                if (size3D < 2 || size3D > 65 || rawTriplets.length < size3D * size3D * size3D * 3) {
+                  throw new Error("Cấu trúc file .cube không đúng chuẩn LUT 3D");
+                }
+
+                const targetSize = size3D > 33 ? 33 : size3D;
+                const sample3D = (fr, fg, fb) => {
+                  const x = fr * (size3D - 1);
+                  const y = fg * (size3D - 1);
+                  const z = fb * (size3D - 1);
+                  const x0 = Math.floor(x), x1 = Math.min(size3D - 1, x0 + 1), fx = x - x0;
+                  const y0 = Math.floor(y), y1 = Math.min(size3D - 1, y0 + 1), fy = y - y0;
+                  const z0 = Math.floor(z), z1 = Math.min(size3D - 1, z0 + 1), fz = z - z0;
+                  const idx = (rx, gy, bz) => (rx + size3D * (gy + size3D * bz)) * 3;
+
+                  const out = [0, 0, 0];
+                  for (let ch = 0; ch < 3; ch++) {
+                    const c000 = rawTriplets[idx(x0, y0, z0) + ch];
+                    const c100 = rawTriplets[idx(x1, y0, z0) + ch];
+                    const c010 = rawTriplets[idx(x0, y1, z0) + ch];
+                    const c110 = rawTriplets[idx(x1, y1, z0) + ch];
+                    const c001 = rawTriplets[idx(x0, y0, z1) + ch];
+                    const c101 = rawTriplets[idx(x1, y0, z1) + ch];
+                    const c011 = rawTriplets[idx(x0, y1, z1) + ch];
+                    const c111 = rawTriplets[idx(x1, y1, z1) + ch];
+
+                    const c00 = c000 + (c100 - c000) * fx;
+                    const c10 = c010 + (c110 - c010) * fx;
+                    const c01 = c001 + (c101 - c001) * fx;
+                    const c11 = c011 + (c111 - c011) * fx;
+                    const c0 = c00 + (c10 - c00) * fy;
+                    const c1 = c01 + (c11 - c01) * fy;
+                    out[ch] = norm(c0 + (c1 - c0) * fz, ch);
+                  }
+                  return out;
+                };
+
+                const packed = new Uint8Array(targetSize * targetSize * targetSize * 4);
+                let ptr = 0;
+                for (let b = 0; b < targetSize; b++) {
+                  const fb = b / (targetSize - 1);
+                  for (let g = 0; g < targetSize; g++) {
+                    const fg = g / (targetSize - 1);
+                    for (let r = 0; r < targetSize; r++) {
+                      const fr = r / (targetSize - 1);
+                      let cr, cg, cb;
+                      if (targetSize === size3D) {
+                        const i = (r + size3D * (g + size3D * b)) * 3;
+                        cr = norm(rawTriplets[i], 0);
+                        cg = norm(rawTriplets[i + 1], 1);
+                        cb = norm(rawTriplets[i + 2], 2);
+                      } else {
+                        [cr, cg, cb] = sample3D(fr, fg, fb);
+                      }
+                      packed[ptr++] = Math.round(cr * 255);
+                      packed[ptr++] = Math.round(cg * 255);
+                      packed[ptr++] = Math.round(cb * 255);
+                      packed[ptr++] = 255;
+                    }
+                  }
+                }
+                return { name: title, size: targetSize, data: packed };
+              }
+
+              function openLutDB() {
+                return new Promise((resolve, reject) => {
+                  const req = indexedDB.open("AICamLutDB", 1);
+                  req.onupgradeneeded = () => {
+                    if (!req.result.objectStoreNames.contains("luts")) {
+                      req.result.createObjectStore("luts", { keyPath: "id" });
+                    }
+                  };
+                  req.onsuccess = () => resolve(req.result);
+                  req.onerror = () => reject(req.error);
+                });
+              }
+
+              async function loadSavedCustomLuts() {
+                try {
+                  const db = await openLutDB();
+                  return await new Promise((resolve) => {
+                    const tx = db.transaction("luts", "readonly");
+                    const req = tx.objectStore("luts").getAll();
+                    req.onsuccess = () => resolve((req.result || []).map((item) => ({
+                      ...item,
+                      data: new Uint8Array(item.data)
+                    })));
+                    req.onerror = () => resolve([]);
+                  });
+                } catch {
+                  return [];
+                }
+              }
+
+              async function saveCustomLutToDB(lut) {
+                try {
+                  const db = await openLutDB();
+                  const tx = db.transaction("luts", "readwrite");
+                  tx.objectStore("luts").put({
+                    id: lut.id, name: lut.name, swatch: lut.swatch,
+                    custom: true, size: lut.size, data: Array.from(lut.data)
+                  });
+                } catch {}
+              }
+
+              async function deleteCustomLutFromDB(id) {
+                try {
+                  const db = await openLutDB();
+                  const tx = db.transaction("luts", "readwrite");
+                  tx.objectStore("luts").delete(id);
+                } catch {}
+              }
+
+              let gl = null;
+              let glProgram = null;
+              let videoTex = null;
+              let lutTex = null;
+              let glLoc = {};
+              let useWebGL = false;
+
+              function initWebGL() {
+                try {
+                  gl = glCanvas.getContext("webgl", { alpha: false, antialias: false, preserveDrawingBuffer: false });
+                  if (!gl) throw new Error("No WebGL");
+
+                  const vsSrc = `
+                    attribute vec2 aPos;
+                    varying vec2 vUv;
+                    void main() {
+                      vUv = vec2(aPos.x * 0.5 + 0.5, 0.5 - aPos.y * 0.5);
+                      gl_Position = vec4(aPos, 0.0, 1.0);
+                    }
+                  `;
+
+                  const fsSrc = `
+                    precision mediump float;
+                    varying vec2 vUv;
+                    uniform sampler2D uVideo;
+                    uniform sampler2D uLut;
+                    uniform vec2 uVideoScale;
+                    uniform vec3 uTempGains;
+                    uniform float uLutSize;
+                    uniform float uIntensity;
+                    uniform float uUseLut;
+
+                    vec3 sampleLut(vec3 c, float n) {
+                      float bScaled = clamp(c.b, 0.0, 1.0) * (n - 1.0);
+                      float b0 = floor(bScaled);
+                      float b1 = min(n - 1.0, b0 + 1.0);
+                      float fb = bScaled - b0;
+                      float uBase = (0.5 + clamp(c.r, 0.0, 1.0) * (n - 1.0));
+                      float v = (0.5 + clamp(c.g, 0.0, 1.0) * (n - 1.0)) / n;
+                      vec3 c0 = texture2D(uLut, vec2((b0 * n + uBase) / (n * n), v)).rgb;
+                      vec3 c1 = texture2D(uLut, vec2((b1 * n + uBase) / (n * n), v)).rgb;
