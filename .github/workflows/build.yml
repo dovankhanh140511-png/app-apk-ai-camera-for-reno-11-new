@@ -29,7 +29,7 @@ jobs:
           mkdir -p app/src/main/assets/mediapipe/wasm app/src/main/java/com/example/aicamera
 
           echo "Dang tai san bo AI MediaPipe de chay Offline 100%..."
-          npm install --no-save --prefix /tmp/mp @mediapipe/tasks-vision@0.10.22
+          npm install --no-save --prefix /tmp/mp @mediapipe/tasks-vision@0.10.21
           cp /tmp/mp/node_modules/@mediapipe/tasks-vision/vision_bundle.mjs app/src/main/assets/mediapipe/
           cp -r /tmp/mp/node_modules/@mediapipe/tasks-vision/wasm/* app/src/main/assets/mediapipe/wasm/
           rm -rf /tmp/mp
