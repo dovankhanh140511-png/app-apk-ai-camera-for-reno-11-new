@@ -82,8 +82,8 @@ jobs:
                   applicationId = "com.example.aicamera"
                   minSdk = 24
                   targetSdk = 36
-                  versionCode = 2
-                  versionName = "2.0"
+                  versionCode = 3
+                  versionName = "3.0"
               }
 
               androidResources {
@@ -118,6 +118,7 @@ jobs:
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+              <uses-permission android:name="android.permission.INTERNET" />
               <uses-permission android:name="android.permission.CAMERA" />
               <uses-feature android:name="android.hardware.camera" android:required="false" />
 
@@ -145,9 +146,12 @@ jobs:
 
           import android.Manifest
           import android.annotation.SuppressLint
+          import android.app.Activity
           import android.content.ContentValues
+          import android.content.Intent
           import android.content.pm.PackageManager
           import android.graphics.Color
+          import android.net.Uri
           import android.os.Build
           import android.os.Bundle
           import android.os.Environment
@@ -167,6 +171,7 @@ jobs:
 
               private lateinit var webView: WebView
               private var pendingPermissionRequest: PermissionRequest? = null
+              private var filePathCallback: ValueCallback<Array<Uri>>? = null
               private val appUrl = "https://appassets.androidplatform.net/assets/index.html"
 
               private val cameraLauncher = registerForActivityResult(
@@ -187,6 +192,28 @@ jobs:
                       if (::webView.isInitialized && webView.url == null) {
                           webView.loadUrl(appUrl)
                       }
+                  }
+              }
+
+              private val fileChooserLauncher = registerForActivityResult(
+                  ActivityResultContracts.StartActivityForResult()
+              ) { result ->
+                  val cb = filePathCallback
+                  filePathCallback = null
+                  if (cb == null) return@registerForActivityResult
+
+                  if (result.resultCode == Activity.RESULT_OK) {
+                      val data = result.data
+                      val uris = mutableListOf<Uri>()
+                      data?.data?.let { uris.add(it) }
+                      data?.clipData?.let { clip ->
+                          for (i in 0 until clip.itemCount) {
+                              clip.getItemAt(i).uri?.let { uris.add(it) }
+                          }
+                      }
+                      cb.onReceiveValue(if (uris.isNotEmpty()) uris.toTypedArray() else null)
+                  } else {
+                      cb.onReceiveValue(null)
                   }
               }
 
@@ -259,14 +286,37 @@ jobs:
                               pendingPermissionRequest = null
                           }
                       }
+
+                      override fun onShowFileChooser(
+                          webView: WebView?,
+                          filePathCallback: ValueCallback<Array<Uri>>?,
+                          fileChooserParams: FileChooserParams?
+                      ): Boolean {
+                          this@MainActivity.filePathCallback?.onReceiveValue(null)
+                          this@MainActivity.filePathCallback = filePathCallback
+
+                          val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                              addCategory(Intent.CATEGORY_OPENABLE)
+                              type = "*/*"
+                          }
+                          val chooser = Intent.createChooser(intent, "Chọn file LUT (.cube)")
+                          return try {
+                              fileChooserLauncher.launch(chooser)
+                              true
+                          } catch (e: Exception) {
+                              this@MainActivity.filePathCallback = null
+                              Toast.makeText(this@MainActivity, "Không mở được trình chọn tệp", Toast.LENGTH_SHORT).show()
+                              false
+                          }
+                      }
                   }
 
                   onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
                       override fun handleOnBackPressed() {
                           webView.evaluateJavascript(
-                              "(function(){ if(window.closePreviewIfOpen && window.closePreviewIfOpen()) return 'closed'; return 'exit'; })()"
+                              "(function(){ if(window.handleBackAction && window.handleBackAction()) return 'handled'; return 'exit'; })()"
                           ) { result ->
-                              if (result != "\"closed\"") {
+                              if (result != "\"handled\"") {
                                   isEnabled = false
                                   onBackPressedDispatcher.onBackPressed()
                               }
@@ -294,6 +344,8 @@ jobs:
               }
 
               override fun onDestroy() {
+                  filePathCallback?.onReceiveValue(null)
+                  filePathCallback = null
                   webView.destroy()
                   super.onDestroy()
               }
@@ -349,8 +401,8 @@ jobs:
             <style>
               :root {
                 --bg: #000000;
-                --glass: rgba(18, 18, 22, 0.56);
-                --glass-strong: rgba(24, 24, 29, 0.84);
+                --glass: rgba(18, 18, 22, 0.62);
+                --glass-panel: rgba(16, 16, 20, 0.86);
                 --border: rgba(255, 255, 255, 0.14);
                 --text: #fafafa;
                 --muted: #a1a1aa;
@@ -368,1043 +420,131 @@ jobs:
               }
 
               html, body {
-                margin: 0;
-                padding: 0;
-                width: 100%;
-                height: 100%;
-                background: var(--bg);
-                color: var(--text);
+                margin: 0; padding: 0; width: 100%; height: 100%;
+                background: var(--bg); color: var(--text);
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                overflow: hidden;
-                touch-action: manipulation;
+                overflow: hidden; touch-action: manipulation;
               }
 
-              .app {
-                position: relative;
-                width: 100%;
-                height: 100%;
-                background: #000;
-              }
+              .app { position: relative; width: 100%; height: 100%; background: #000; }
 
-              /* Viewfinder tràn viền toàn màn hình */
               .stage {
-                position: absolute;
-                inset: 0;
-                width: 100%;
-                height: 100%;
-                overflow: hidden;
-                background: #050507;
+                position: absolute; inset: 0; width: 100%; height: 100%;
+                overflow: hidden; background: #050507;
               }
 
-              #cameraVideo,
-              #overlayCanvas {
-                position: absolute;
-                inset: 0;
-                width: 100%;
-                height: 100%;
+              #cameraVideo, #glCanvas, #overlayCanvas {
+                position: absolute; inset: 0; width: 100%; height: 100%;
                 object-fit: cover;
               }
 
-              #cameraVideo.mirrored,
-              #overlayCanvas.mirrored {
+              #cameraVideo { opacity: 0; pointer-events: none; z-index: 0; }
+              #cameraVideo.fallback-visible { opacity: 1; }
+              #glCanvas { z-index: 1; pointer-events: none; }
+              #overlayCanvas { z-index: 2; pointer-events: none; }
+
+              #cameraVideo.mirrored, #glCanvas.mirrored, #overlayCanvas.mirrored {
                 transform: scaleX(-1);
               }
 
-              #overlayCanvas {
-                pointer-events: none;
-                z-index: 2;
-              }
-
-              /* Thanh HUD nổi phía trên */
               .top-hud {
-                position: absolute;
-                top: 0;
-                left: 0;
-                right: 0;
-                z-index: 10;
+                position: absolute; top: 0; left: 0; right: 0; z-index: 10;
                 padding: calc(var(--safe-top) + 12px) 16px 24px;
-                background: linear-gradient(to bottom, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.28) 65%, rgba(0,0,0,0) 100%);
-                display: flex;
-                flex-direction: column;
-                gap: 10px;
-                pointer-events: none;
+                background: linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.28) 65%, rgba(0,0,0,0) 100%);
+                display: flex; flex-direction: column; gap: 10px; pointer-events: none;
               }
 
               .top-row {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 10px;
-                pointer-events: auto;
+                display: flex; align-items: center; justify-content: space-between;
+                gap: 8px; pointer-events: auto;
               }
 
               .status-pill {
-                display: inline-flex;
-                align-items: center;
-                gap: 8px;
-                padding: 8px 14px;
-                border-radius: 999px;
-                background: var(--glass);
-                backdrop-filter: blur(18px);
-                -webkit-backdrop-filter: blur(18px);
-                border: 1px solid var(--border);
-                font-size: 12.5px;
-                font-weight: 600;
-                letter-spacing: 0.2px;
-                transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+                display: inline-flex; align-items: center; gap: 8px; padding: 8px 13px;
+                border-radius: 999px; background: var(--glass);
+                backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+                border: 1px solid var(--border); font-size: 12px; font-weight: 600;
+                transition: all 0.25s ease;
               }
 
               .status-pill.good {
-                background: rgba(20, 83, 45, 0.72);
-                border-color: rgba(74, 222, 128, 0.65);
-                color: #dcfce7;
-                box-shadow: 0 4px 20px var(--green-glow);
+                background: rgba(20, 83, 45, 0.74); border-color: rgba(74, 222, 128, 0.65);
+                color: #dcfce7; box-shadow: 0 4px 20px var(--green-glow);
               }
 
-              .status-dot {
-                width: 7px;
-                height: 7px;
-                border-radius: 50%;
-                background: var(--amber);
-                flex-shrink: 0;
-                transition: all 0.2s ease;
+              .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); flex-shrink: 0; }
+              .status-pill.good .status-dot { background: #4ade80; box-shadow: 0 0 10px #4ade80; }
+              .status-pill.loading .status-dot { background: #60a5fa; animation: pulse 1.1s infinite; }
+
+              @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.75); } }
+
+              .top-controls { display: flex; align-items: center; gap: 6px; }
+
+              .ai-chip-btn {
+                display: inline-flex; align-items: center; gap: 5px; height: 34px; padding: 0 11px;
+                border-radius: 999px; border: 1px solid var(--border); background: var(--glass);
+                backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+                color: var(--muted); font-size: 11.5px; font-weight: 700; cursor: pointer;
               }
 
-              .status-pill.good .status-dot {
-                background: #4ade80;
-                box-shadow: 0 0 10px #4ade80;
-              }
-
-              .status-pill.loading .status-dot {
-                background: #60a5fa;
-                animation: pulse 1.1s infinite ease-in-out;
-              }
-
-              @keyframes pulse {
-                0%, 100% { opacity: 1; transform: scale(1); }
-                50% { opacity: 0.35; transform: scale(0.75); }
+              .ai-chip-btn.on {
+                border-color: rgba(74, 222, 128, 0.5); background: rgba(20, 83, 45, 0.52); color: #bbf7d0;
               }
 
               .ratio-switch {
-                display: flex;
-                align-items: center;
-                padding: 3px;
-                border-radius: 999px;
-                background: var(--glass);
-                backdrop-filter: blur(18px);
-                -webkit-backdrop-filter: blur(18px);
+                display: flex; align-items: center; padding: 3px; border-radius: 999px;
+                background: var(--glass); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
                 border: 1px solid var(--border);
               }
 
               .ratio-btn {
-                border: none;
-                background: transparent;
-                color: rgba(255,255,255,0.68);
-                font-size: 12px;
-                font-weight: 700;
-                padding: 6px 13px;
-                border-radius: 999px;
-                cursor: pointer;
-                transition: all 0.2s ease;
+                border: none; background: transparent; color: rgba(255,255,255,0.68);
+                font-size: 11.5px; font-weight: 700; padding: 5px 11px; border-radius: 999px; cursor: pointer;
               }
 
-              .ratio-btn.active {
-                background: #ffffff;
-                color: #09090b;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-              }
+              .ratio-btn.active { background: #ffffff; color: #09090b; }
 
-              .telemetry-bar {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-              }
+              .telemetry-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
               .tele-chip {
-                display: inline-flex;
-                align-items: center;
-                gap: 5px;
-                padding: 3px 9px;
-                border-radius: 6px;
-                background: rgba(0, 0, 0, 0.42);
+                display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px;
+                border-radius: 6px; background: rgba(0, 0, 0, 0.45);
                 border: 1px solid rgba(255,255,255,0.08);
-                font-size: 10.5px;
-                font-weight: 600;
-                color: rgba(255,255,255,0.7);
-                letter-spacing: 0.4px;
+                font-size: 10.5px; font-weight: 600; color: rgba(255,255,255,0.72); letter-spacing: 0.3px;
               }
 
-              /* Bảng điều khiển Pro phía dưới */
-              .bottom-dock {
-                position: absolute;
-                bottom: 0;
-                left: 0;
-                right: 0;
-                z-index: 10;
-                padding: 28px 26px calc(var(--safe-bottom) + 20px);
-                background: linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.65) 60%, rgba(0,0,0,0) 100%);
-                display: grid;
-                grid-template-columns: 1fr auto 1fr;
-                align-items: center;
+              .color-drawer {
+                position: absolute; left: 12px; right: 12px;
+                bottom: calc(var(--safe-bottom) + 114px);
+                z-index: 12; padding: 14px 14px 12px;
+                border-radius: 22px; background: var(--glass-panel);
+                backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px);
+                border: 1px solid rgba(255,255,255,0.14);
+                box-shadow: 0 18px 42px rgba(0,0,0,0.65);
+                display: none; flex-direction: column; gap: 12px;
               }
 
-              .dock-btn {
-                width: 52px;
-                height: 52px;
-                border-radius: 50%;
-                border: 1px solid var(--border);
-                background: var(--glass);
-                backdrop-filter: blur(18px);
-                -webkit-backdrop-filter: blur(18px);
-                color: #fff;
+              .color-drawer.open {
                 display: flex;
-                align-items: center;
-                justify-content: center;
-                cursor: pointer;
-                transition: transform 0.14s ease, background 0.2s ease, border-color 0.2s ease;
+                animation: slideUp 0.18s cubic-bezier(0.22, 1, 0.36, 1);
               }
 
-              .dock-btn:active {
-                transform: scale(0.92);
-                background: rgba(255,255,255,0.18);
-              }
-
-              .dock-btn.left { justify-self: start; }
-              .dock-btn.right {
-                justify-self: end;
-                width: auto;
-                padding: 0 15px;
-                border-radius: 999px;
-                gap: 6px;
-                font-size: 12.5px;
-                font-weight: 700;
-              }
-
-              .dock-btn.ai-on {
-                border-color: rgba(74, 222, 128, 0.45);
-                background: rgba(20, 83, 45, 0.45);
-                color: #bbf7d0;
-              }
-
-              /* Nút chụp Pro Camera */
-              .shutter-wrap {
-                position: relative;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-              }
-
-              .shutter-btn {
-                width: 78px;
-                height: 78px;
-                border-radius: 50%;
-                border: 3.5px solid rgba(255,255,255,0.92);
-                background: rgba(255,255,255,0.08);
-                padding: 5px;
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                transition: all 0.22s ease;
-                box-shadow: 0 6px 24px rgba(0,0,0,0.45);
-              }
-
-              .shutter-core {
-                width: 100%;
-                height: 100%;
-                border-radius: 50%;
-                background: #ffffff;
-                transition: transform 0.12s ease, background 0.25s ease;
-              }
-
-              .shutter-btn.ready {
-                border-color: #4ade80;
-                box-shadow: 0 0 24px var(--green-glow);
-              }
-
-              .shutter-btn.ready .shutter-core {
-                background: #22c55e;
-              }
-
-              .shutter-btn:active .shutter-core {
-                transform: scale(0.86);
-              }
-
-              .shutter-btn:disabled {
-                opacity: 0.4;
-                pointer-events: none;
-              }
-
-              /* Màn hình xem lại ảnh sang trọng */
-              .preview-modal {
-                position: fixed;
-                inset: 0;
-                z-index: 30;
-                background: #070709;
-                display: none;
-                flex-direction: column;
-                padding: calc(var(--safe-top) + 14px) 18px calc(var(--safe-bottom) + 20px);
-              }
-
-              .preview-modal.open {
-                display: flex;
-                animation: fadeIn 0.18s ease-out;
-              }
-
-              @keyframes fadeIn {
-                from { opacity: 0; transform: translateY(10px); }
+              @keyframes slideUp {
+                from { opacity: 0; transform: translateY(14px); }
                 to { opacity: 1; transform: translateY(0); }
               }
 
-              .preview-top {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                margin-bottom: 14px;
+              .slider-row { display: flex; flex-direction: column; gap: 6px; }
+
+              .slider-head {
+                display: flex; align-items: center; justify-content: space-between;
+                font-size: 12px; font-weight: 600;
               }
 
-              .preview-heading {
-                display: flex;
-                flex-direction: column;
-                gap: 2px;
-              }
-
-              .preview-title {
-                font-size: 16px;
-                font-weight: 700;
-              }
-
-              .preview-sub {
-                font-size: 12px;
-                color: var(--muted);
-              }
-
-              .preview-res-badge {
-                font-size: 12px;
-                font-weight: 700;
-                color: #86efac;
-                background: rgba(34, 197, 94, 0.16);
-                border: 1px solid rgba(74, 222, 128, 0.35);
-                padding: 5px 11px;
-                border-radius: 999px;
-              }
-
-              .preview-frame {
-                flex: 1;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                overflow: hidden;
-                border-radius: 18px;
-                background: #0e0e12;
-                border: 1px solid rgba(255,255,255,0.1);
-                box-shadow: 0 20px 50px rgba(0,0,0,0.6);
-              }
-
-              .preview-frame img {
-                max-width: 100%;
-                max-height: 100%;
-                object-fit: contain;
-              }
-
-              .preview-actions {
-                display: grid;
-                grid-template-columns: 1fr 1.45fr;
-                gap: 12px;
-                margin-top: 16px;
-              }
-
-              .action-btn {
-                min-height: 54px;
-                border-radius: 16px;
-                border: 1px solid var(--border);
-                font-size: 15px;
-                font-weight: 700;
-                cursor: pointer;
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                gap: 8px;
-                transition: transform 0.12s ease;
-              }
-
-              .action-btn:active { transform: scale(0.97); }
-
-              .btn-retake {
-                background: #18181d;
-                color: var(--text);
-              }
-
-              .btn-save {
-                background: linear-gradient(135deg, #22c55e, #16a34a);
-                color: #032210;
-                border-color: #4ade80;
-                box-shadow: 0 8px 24px rgba(34, 197, 94, 0.25);
-              }
-
-              /* Hộp báo lỗi camera */
-              .error-sheet {
-                position: absolute;
-                inset: 0;
-                z-index: 25;
-                background: rgba(5, 5, 7, 0.94);
-                display: none;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                text-align: center;
-                padding: 32px;
-                gap: 14px;
-              }
-
-              .error-sheet.show { display: flex; }
-              .error-sheet h2 { margin: 0; font-size: 19px; }
-              .error-sheet p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--muted); max-width: 320px; }
-
-              .flash {
-                position: fixed;
-                inset: 0;
-                background: #fff;
-                opacity: 0;
-                pointer-events: none;
-                z-index: 40;
-                transition: opacity 0.16s ease;
-              }
-
-              .flash.active { opacity: 0.72; transition: none; }
-            </style>
-          </head>
-          <body>
-            <div class="app">
-              <div class="stage" id="stage">
-                <video id="cameraVideo" autoplay playsinline muted></video>
-                <canvas id="overlayCanvas"></canvas>
-
-                <div class="top-hud">
-                  <div class="top-row">
-                    <div class="status-pill loading" id="statusBadge">
-                      <span class="status-dot"></span>
-                      <span id="statusText">Đang khởi động AI...</span>
-                    </div>
-
-                    <div class="ratio-switch" role="group" aria-label="Tỷ lệ khung cắt">
-                      <button class="ratio-btn active" data-ratio="0.8">4:5</button>
-                      <button class="ratio-btn" data-ratio="0.75">3:4</button>
-                    </div>
-                  </div>
-
-                  <div class="telemetry-bar">
-                    <span class="tele-chip" id="metaInfo">CAMERA • ĐANG MỞ...</span>
-                    <span class="tele-chip">AI OFFLINE</span>
-                  </div>
-                </div>
-
-                <div class="error-sheet" id="errorOverlay">
-                  <h2>Không thể mở Camera</h2>
-                  <p id="errorDesc">Vui lòng cấp quyền Camera trong cài đặt ứng dụng.</p>
-                  <button class="action-btn btn-save" id="retryBtn" style="padding: 0 28px;">Thử lại</button>
-                </div>
-
-                <div class="bottom-dock">
-                  <button class="dock-btn left" id="switchCamBtn" aria-label="Đổi camera">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                      <path d="M3 3v5h5"/>
-                      <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
-                      <path d="M16 16h5v5"/>
-                    </svg>
-                  </button>
-
-                  <div class="shutter-wrap">
-                    <button class="shutter-btn" id="shutterBtn" aria-label="Chụp ảnh" disabled>
-                      <span class="shutter-core"></span>
-                    </button>
-                  </div>
-
-                  <button class="dock-btn right ai-on" id="toggleAiBtn" aria-label="Bật tắt AI">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
-                    </svg>
-                    <span id="aiLabel">AI Bật</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div class="preview-modal" id="previewModal">
-              <div class="preview-top">
-                <div class="preview-heading">
-                  <div class="preview-title">Bố cục hoàn tất</div>
-                  <div class="preview-sub">Đã cắt giữ nguyên độ phân giải gốc</div>
-                </div>
-                <div class="preview-res-badge" id="previewRes">0 × 0 px</div>
-              </div>
-              <div class="preview-frame">
-                <img id="previewImg" alt="Ảnh đã chụp" />
-              </div>
-              <div class="preview-actions">
-                <button class="action-btn btn-retake" id="retakeBtn">Chụp lại</button>
-                <button class="action-btn btn-save" id="downloadBtn">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="7 10 12 15 17 10"/>
-                    <line x1="12" y1="15" x2="12" y2="3"/>
-                  </svg>
-                  <span>Tải ảnh về</span>
-                </button>
-              </div>
-            </div>
-
-            <div class="flash" id="flashEl"></div>
-
-            <script type="module">
-              import { FilesetResolver, ObjectDetector } from "./mediapipe/vision_bundle.mjs";
-
-              const video = document.getElementById("cameraVideo");
-              const canvas = document.getElementById("overlayCanvas");
-              const ctx = canvas.getContext("2d");
-              const stage = document.getElementById("stage");
-              const statusBadge = document.getElementById("statusBadge");
-              const statusText = document.getElementById("statusText");
-              const metaInfo = document.getElementById("metaInfo");
-              const shutterBtn = document.getElementById("shutterBtn");
-              const switchCamBtn = document.getElementById("switchCamBtn");
-              const toggleAiBtn = document.getElementById("toggleAiBtn");
-              const aiLabel = document.getElementById("aiLabel");
-              const ratioBtns = document.querySelectorAll(".ratio-btn");
-              const errorOverlay = document.getElementById("errorOverlay");
-              const errorDesc = document.getElementById("errorDesc");
-              const retryBtn = document.getElementById("retryBtn");
-              const previewModal = document.getElementById("previewModal");
-              const previewImg = document.getElementById("previewImg");
-              const previewRes = document.getElementById("previewRes");
-              const retakeBtn = document.getElementById("retakeBtn");
-              const downloadBtn = document.getElementById("downloadBtn");
-              const flashEl = document.getElementById("flashEl");
-
-              // Canvas ẩn kích thước nhỏ 320px để chạy AI siêu mượt, không bao giờ làm đơ máy
-              const aiCanvas = document.createElement("canvas");
-              const aiCtx = aiCanvas.getContext("2d", { willReadFrequently: false });
-
-              let objectDetector = null;
-              let currentStream = null;
-              let facingMode = "environment";
-              let targetRatio = 4 / 5;
-              let aiEnabled = true;
-              let rafId = null;
-              let aiTimerId = null;
-              let isInferring = false;
-              let lastInferTs = 0;
-
-              let smoothedCrop = null;
-              let latestDetections = [];
-              let capturedDataUrl = null;
-              let capturedBlob = null;
-
-              const LABEL_VI = {
-                person: "Người", cat: "Mèo", dog: "Chó", bird: "Chim",
-                car: "Ô tô", motorcycle: "Xe máy", bicycle: "Xe đạp",
-                bottle: "Chai", cup: "Ly / Cốc", chair: "Ghế",
-                potted_plant: "Chậu cây", cell_phone: "Điện thoại",
-                laptop: "Laptop", book: "Sách"
-              };
-
-              function setStatus(state, text) {
-                statusBadge.classList.remove("good", "loading");
-                shutterBtn.classList.remove("ready");
-                if (state === "good") {
-                  statusBadge.classList.add("good");
-                  shutterBtn.classList.add("ready");
-                } else if (state === "loading") {
-                  statusBadge.classList.add("loading");
-                }
-                statusText.textContent = text;
-              }
-
-              async function initAI() {
-                try {
-                  setStatus("loading", "Đang nạp AI...");
-                  const vision = await FilesetResolver.forVisionTasks("./mediapipe/wasm");
-                  objectDetector = await ObjectDetector.createFromOptions(vision, {
-                    baseOptions: {
-                      modelAssetPath: "./mediapipe/efficientdet_lite0.tflite",
-                      delegate: "CPU"
-                    },
-                    runningMode: "VIDEO",
-                    scoreThreshold: 0.36,
-                    maxResults: 5
-                  });
-                  setStatus("idle", "Đưa chủ thể vào khung");
-                  scheduleNextInference(100);
-                } catch (err) {
-                  console.error("Lỗi khởi tạo AI:", err);
-                  setStatus("idle", "AI tạm tắt (vẫn chụp được)");
-                }
-              }
-
-              function scheduleNextInference(delayMs = 110) {
-                if (aiTimerId) clearTimeout(aiTimerId);
-                aiTimerId = setTimeout(runAiStep, delayMs);
-              }
-
-              function runAiStep() {
-                if (!aiEnabled || !objectDetector || !video.videoWidth || !video.videoHeight || video.paused || isInferring) {
-                  scheduleNextInference(140);
-                  return;
-                }
-
-                isInferring = true;
-                const tStart = performance.now();
-                try {
-                  const vidW = video.videoWidth;
-                  const vidH = video.videoHeight;
-                  const aiW = 320;
-                  const aiH = Math.max(180, Math.round((vidH / vidW) * aiW));
-
-                  if (aiCanvas.width !== aiW || aiCanvas.height !== aiH) {
-                    aiCanvas.width = aiW;
-                    aiCanvas.height = aiH;
-                  }
-
-                  aiCtx.drawImage(video, 0, 0, aiW, aiH);
-
-                  const ts = Math.max(lastInferTs + 1, Math.round(performance.now()));
-                  lastInferTs = ts;
-
-                  const result = objectDetector.detectForVideo(aiCanvas, ts);
-                  const sx = vidW / aiW;
-                  const sy = vidH / aiH;
-
-                  latestDetections = (result?.detections || []).map((d) => ({
-                    categories: d.categories,
-                    boundingBox: {
-                      originX: d.boundingBox.originX * sx,
-                      originY: d.boundingBox.originY * sy,
-                      width: d.boundingBox.width * sx,
-                      height: d.boundingBox.height * sy
-                    }
-                  }));
-                } catch (e) {
-                  // Bỏ qua lỗi frame đơn lẻ
-                } finally {
-                  isInferring = false;
-                }
-
-                // Nghỉ hợp lý để luồng cảm ứng luôn mượt 100%
-                const elapsed = performance.now() - tStart;
-                scheduleNextInference(Math.max(85, Math.min(220, elapsed + 60)));
-              }
-
-              async function startCamera() {
-                errorOverlay.classList.remove("show");
-                shutterBtn.disabled = true;
-
-                if (currentStream) {
-                  currentStream.getTracks().forEach((t) => t.stop());
-                  currentStream = null;
-                }
-
-                const constraintsList = [
-                  {
-                    audio: false,
-                    video: {
-                      facingMode: { ideal: facingMode },
-                      width: { ideal: 1920 },
-                      height: { ideal: 1080 },
-                      frameRate: { ideal: 30, max: 30 }
-                    }
-                  },
-                  {
-                    audio: false,
-                    video: { facingMode: { ideal: facingMode } }
-                  }
-                ];
-
-                let stream = null;
-                let lastError = null;
-                for (const c of constraintsList) {
-                  try {
-                    stream = await navigator.mediaDevices.getUserMedia(c);
-                    break;
-                  } catch (err) {
-                    lastError = err;
-                  }
-                }
-
-                if (!stream) {
-                  errorOverlay.classList.add("show");
-                  errorDesc.textContent = lastError?.name === "NotAllowedError"
-                    ? "Bạn chưa cấp quyền Camera. Hãy mở Cài đặt và cho phép quyền Camera."
-                    : "Không mở được camera trên thiết bị này.";
-                  return;
-                }
-
-                currentStream = stream;
-                video.srcObject = stream;
-
-                const isFront = facingMode === "user";
-                video.classList.toggle("mirrored", isFront);
-                canvas.classList.toggle("mirrored", isFront);
-
-                if (video.readyState < 1) {
-                  await new Promise((resolve) => {
-                    const timer = setTimeout(resolve, 1500);
-                    video.addEventListener("loadedmetadata", () => {
-                      clearTimeout(timer);
-                      resolve();
-                    }, { once: true });
-                  });
-                }
-
-                try {
-                  await video.play();
-                } catch (e) {}
-
-                smoothedCrop = null;
-                latestDetections = [];
-                shutterBtn.disabled = false;
-                const resText = video.videoWidth ? `${video.videoWidth}×${video.videoHeight}` : "HD";
-                metaInfo.textContent = `${isFront ? "CAM TRƯỚC" : "CAM SAU"} • ${resText}`;
-
-                if (!rafId) rafId = requestAnimationFrame(renderLoop);
-              }
-
-              function pickMainSubject(detections, vidW, vidH) {
-                if (!detections || detections.length === 0) return null;
-                let best = null;
-                let bestScore = -1;
-                for (const det of detections) {
-                  const box = det.boundingBox;
-                  const cat = det.categories?.[0];
-                  if (!box || !cat) continue;
-                  const relArea = (box.width * box.height) / (vidW * vidH);
-                  const cx = (box.originX + box.width / 2) / vidW;
-                  const cy = (box.originY + box.height / 2) / vidH;
-                  const centerDist = Math.hypot(cx - 0.5, cy - 0.5);
-                  const personBoost = cat.categoryName === "person" ? 1.45 : 1.0;
-                  const score = cat.score * personBoost * (0.65 + Math.min(relArea, 0.5)) * (1.2 - centerDist * 0.5);
-                  if (score > bestScore) {
-                    bestScore = score;
-                    best = det;
-                  }
-                }
-                return best;
-              }
-
-              function computeAutoCropBox(subject, vidW, vidH, ratio) {
-                let maxCropW = vidW * 0.86;
-                let maxCropH = maxCropW / ratio;
-                if (maxCropH > vidH * 0.84) {
-                  maxCropH = vidH * 0.84;
-                  maxCropW = maxCropH * ratio;
-                }
-                if (!subject) {
-                  return {
-                    x: (vidW - maxCropW) / 2,
-                    y: (vidH - maxCropH) / 2,
-                    w: maxCropW,
-                    h: maxCropH,
-                    hasSubject: false,
-                    good: false
-                  };
-                }
-
-                const b = subject.boundingBox;
-                const isPerson = subject.categories?.[0]?.categoryName === "person";
-                const reqW = b.width * 1.9;
-                const reqH = b.height * (isPerson ? 1.6 : 1.72);
-
-                let cropW = Math.max(reqW, reqH * ratio);
-                let cropH = cropW / ratio;
-                const minW = vidW * 0.44;
-                if (cropW < minW) {
-                  cropW = minW;
-                  cropH = cropW / ratio;
-                }
-                if (cropW > vidW) {
-                  cropW = vidW;
-                  cropH = cropW / ratio;
-                }
-                if (cropH > vidH) {
-                  cropH = vidH;
-                  cropW = cropH * ratio;
-                }
-
-                const subjCx = b.originX + b.width / 2;
-                const subjFocusY = isPerson ? b.originY + b.height * 0.28 : b.originY + b.height / 2;
-
-                let targetAnchorX = 0.5;
-                if (b.width < cropW * 0.48) targetAnchorX = subjCx < vidW / 2 ? 0.36 : 0.64;
-                const targetAnchorY = isPerson ? 0.34 : 0.44;
-
-                const cropX = Math.max(0, Math.min(vidW - cropW, subjCx - cropW * targetAnchorX));
-                const cropY = Math.max(0, Math.min(vidH - cropH, subjFocusY - cropH * targetAnchorY));
-
-                const insideLeft = b.originX >= cropX + cropW * 0.03;
-                const insideRight = b.originX + b.width <= cropX + cropW * 0.97;
-                const insideTop = b.originY >= cropY + cropH * 0.03;
-                const insideBottom = b.originY + b.height <= cropY + cropH * 0.97;
-                const areaRatio = (b.width * b.height) / (cropW * cropH);
-                const relCx = (subjCx - cropX) / cropW;
-                const relCy = (subjFocusY - cropY) / cropH;
-
-                const xBalanced = Math.abs(relCx - 1 / 3) < 0.14 || Math.abs(relCx - 2 / 3) < 0.14 || Math.abs(relCx - 0.5) < 0.12;
-                const yBalanced = Math.abs(relCy - 1 / 3) < 0.15 || Math.abs(relCy - 0.5) < 0.15;
-
-                const good = insideLeft && insideRight && insideTop && insideBottom && areaRatio >= 0.08 && areaRatio <= 0.82 && xBalanced && yBalanced;
-                return { x: cropX, y: cropY, w: cropW, h: cropH, hasSubject: true, good };
-              }
-
-              function lerp(a, b, t) { return a + (b - a) * t; }
-
-              function syncCanvasSize() {
-                const dpr = Math.min(window.devicePixelRatio || 1, 2);
-                const w = stage.clientWidth;
-                const h = stage.clientHeight;
-                if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
-                  canvas.width = Math.round(w * dpr);
-                  canvas.height = Math.round(h * dpr);
-                }
-                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-                return { viewW: w, viewH: h };
-              }
-
-              function drawOverlay(viewW, viewH, vidW, vidH, crop, mainSubject) {
-                ctx.clearRect(0, 0, viewW, viewH);
-
-                const scale = Math.max(viewW / vidW, viewH / vidH);
-                const offsetX = (viewW - vidW * scale) / 2;
-                const offsetY = (viewH - vidH * scale) / 2;
-
-                const sx = crop.x * scale + offsetX;
-                const sy = crop.y * scale + offsetY;
-                const sw = crop.w * scale;
-                const sh = crop.h * scale;
-
-                // Làm tối dịu vùng ngoài khung cắt
-                ctx.save();
-                ctx.fillStyle = "rgba(0, 0, 0, 0.52)";
-                ctx.beginPath();
-                ctx.rect(0, 0, viewW, viewH);
-                ctx.rect(sx, sy, sw, sh);
-                ctx.fill("evenodd");
-                ctx.restore();
-
-                // Lưới 1/3 mảnh tinh tế
-                ctx.save();
-                ctx.strokeStyle = crop.good ? "rgba(134, 239, 172, 0.42)" : "rgba(255, 255, 255, 0.22)";
-                ctx.lineWidth = 1;
-                for (let i = 1; i <= 2; i++) {
-                  const vx = sx + (sw * i) / 3;
-                  ctx.beginPath(); ctx.moveTo(vx, sy); ctx.lineTo(vx, sy + sh); ctx.stroke();
-                  const hy = sy + (sh * i) / 3;
-                  ctx.beginPath(); ctx.moveTo(sx, hy); ctx.lineTo(sx + sw, hy); ctx.stroke();
-                }
-
-                // Dấu cộng (+) tại 4 giao điểm vàng 1/3
-                ctx.strokeStyle = crop.good ? "rgba(74, 222, 128, 0.9)" : "rgba(255, 255, 255, 0.45)";
-                ctx.lineWidth = 1.4;
-                for (let ix = 1; ix <= 2; ix++) {
-                  for (let iy = 1; iy <= 2; iy++) {
-                    const px = sx + (sw * ix) / 3;
-                    const py = sy + (sh * iy) / 3;
-                    ctx.beginPath();
-                    ctx.moveTo(px - 4, py); ctx.lineTo(px + 4, py);
-                    ctx.moveTo(px, py - 4); ctx.lineTo(px, py + 4);
-                    ctx.stroke();
-                  }
-                }
-                ctx.restore();
-
-                // Khung viền chính & 4 góc Pro Camera
-                ctx.save();
-                const frameColor = crop.good ? "#4ade80" : "rgba(255, 255, 255, 0.68)";
-                ctx.strokeStyle = frameColor;
-                ctx.lineWidth = crop.good ? 2 : 1;
-                ctx.strokeRect(sx, sy, sw, sh);
-
-                const corner = 24;
-                ctx.strokeStyle = crop.good ? "#22c55e" : "#ffffff";
-                ctx.lineWidth = 3.5;
-                ctx.lineCap = "round";
-                ctx.beginPath();
-                ctx.moveTo(sx, sy + corner); ctx.lineTo(sx, sy); ctx.lineTo(sx + corner, sy);
-                ctx.moveTo(sx + sw - corner, sy); ctx.lineTo(sx + sw, sy); ctx.lineTo(sx + sw, sy + corner);
-                ctx.moveTo(sx, sy + sh - corner); ctx.lineTo(sx, sy + sh); ctx.lineTo(sx + corner, sy + sh);
-                ctx.moveTo(sx + sw - corner, sy + sh); ctx.lineTo(sx + sw, sy + sh); ctx.lineTo(sx + sw, sy + sh - corner);
-                ctx.stroke();
-                ctx.restore();
-
-                // Khung nhận diện chủ thể
-                if (mainSubject && aiEnabled) {
-                  const b = mainSubject.boundingBox;
-                  const bx = b.originX * scale + offsetX;
-                  const by = b.originY * scale + offsetY;
-                  const bw = b.width * scale;
-                  const bh = b.height * scale;
-
-                  ctx.save();
-                  ctx.setLineDash([5, 5]);
-                  ctx.strokeStyle = crop.good ? "rgba(74, 222, 128, 0.85)" : "rgba(251, 191, 36, 0.85)";
-                  ctx.lineWidth = 1.4;
-                  ctx.strokeRect(bx, by, bw, bh);
-                  ctx.restore();
-
-                  if (facingMode !== "user") {
-                    const cat = mainSubject.categories?.[0];
-                    const labelName = LABEL_VI[cat?.categoryName] || cat?.categoryName || "Chủ thể";
-                    const pct = Math.round((cat?.score || 0) * 100);
-                    const tag = `${labelName} • ${pct}%`;
-
-                    ctx.save();
-                    ctx.font = "600 11.5px -apple-system, sans-serif";
-                    const tw = ctx.measureText(tag).width + 16;
-                    const tx = Math.max(10, Math.min(viewW - tw - 10, bx));
-                    const ty = Math.max(26, by - 6);
-                    ctx.fillStyle = "rgba(12, 12, 16, 0.78)";
-                    ctx.beginPath();
-                    ctx.roundRect(tx, ty - 18, tw, 22, 6);
-                    ctx.fill();
-                    ctx.fillStyle = crop.good ? "#86efac" : "#fde68a";
-                    ctx.fillText(tag, tx + 8, ty - 3);
-                    ctx.restore();
-                  }
-                }
-              }
-
-              function renderLoop() {
-                rafId = requestAnimationFrame(renderLoop);
-                if (!video.videoWidth || !video.videoHeight || video.paused) return;
-
-                const vidW = video.videoWidth;
-                const vidH = video.videoHeight;
-                const { viewW, viewH } = syncCanvasSize();
-
-                const mainSubject = aiEnabled ? pickMainSubject(latestDetections, vidW, vidH) : null;
-                const targetCrop = computeAutoCropBox(mainSubject, vidW, vidH, targetRatio);
-
-                if (!smoothedCrop) {
-                  smoothedCrop = { ...targetCrop };
-                } else {
-                  smoothedCrop.x = lerp(smoothedCrop.x, targetCrop.x, 0.18);
-                  smoothedCrop.y = lerp(smoothedCrop.y, targetCrop.y, 0.18);
-                  smoothedCrop.w = lerp(smoothedCrop.w, targetCrop.w, 0.18);
-                  smoothedCrop.h = lerp(smoothedCrop.h, targetCrop.h, 0.18);
-                  smoothedCrop.hasSubject = targetCrop.hasSubject;
-                  smoothedCrop.good = targetCrop.good;
-                }
-
-                if (!aiEnabled) setStatus("idle", "AI đang tắt • Khung thủ công");
-                else if (!objectDetector) setStatus("loading", "Đang nạp AI...");
-                else if (smoothedCrop.good) setStatus("good", "Bố cục chuẩn");
-                else if (smoothedCrop.hasSubject) setStatus("idle", "Căn nhẹ chủ thể vào lưới 1/3");
-                else setStatus("idle", "Đưa chủ thể vào khung");
-
-                drawOverlay(viewW, viewH, vidW, vidH, smoothedCrop, mainSubject);
-              }
-
-              async function captureFullRes() {
-                if (!video.videoWidth || !smoothedCrop) return;
-                flashEl.classList.add("active");
-                setTimeout(() => flashEl.classList.remove("active"), 130);
-
-                const sx = Math.max(0, Math.round(smoothedCrop.x));
-                const sy = Math.max(0, Math.round(smoothedCrop.y));
-                const sw = Math.min(video.videoWidth - sx, Math.round(smoothedCrop.w));
-                const sh = Math.min(video.videoHeight - sy, Math.round(smoothedCrop.h));
-
-                const outCanvas = document.createElement("canvas");
-                outCanvas.width = sw;
-                outCanvas.height = sh;
-                const outCtx = outCanvas.getContext("2d");
-
-                if (facingMode === "user") {
-                  outCtx.translate(sw, 0);
-                  outCtx.scale(-1, 1);
-                }
-
-                outCtx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
-
-                capturedDataUrl = outCanvas.toDataURL("image/jpeg", 0.95);
-                capturedBlob = await new Promise((res) => outCanvas.toBlob(res, "image/jpeg", 0.95));
-
-                previewImg.src = capturedDataUrl;
-                previewRes.textContent = `${sw} × ${sh} px`;
-                previewModal.classList.add("open");
-              }
-
-              function downloadPhoto() {
-                if (!capturedDataUrl) return;
-                const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-                const fileName = `AI_Cam_${stamp}.jpg`;
-                if (window.AndroidBridge && typeof window.AndroidBridge.saveImage === "function") {
-                  window.AndroidBridge.saveImage(capturedDataUrl, fileName);
-                  return;
-                }
-                const url = URL.createObjectURL(capturedBlob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = fileName;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                setTimeout(() => URL.revokeObjectURL(url), 1500);
-              }
-
-              shutterBtn.addEventListener("click", captureFullRes);
-
-              switchCamBtn.addEventListener("click", () => {
-                facingMode = facingMode === "environment" ? "user" : "environment";
-                startCamera();
-              });
-
-              toggleAiBtn.addEventListener("click", () => {
-                aiEnabled = !aiEnabled;
-                toggleAiBtn.classList.toggle("ai-on", aiEnabled);
-                aiLabel.textContent = aiEnabled ? "AI Bật" : "AI Tắt";
-                if (!aiEnabled) latestDetections = [];
-              });
-
-              ratioBtns.forEach((btn) => {
-                btn.addEventListener("click", () => {
-                  ratioBtns.forEach((b) => b.classList.remove("active"));
-                  btn.classList.add("active");
-                  targetRatio = parseFloat(btn.dataset.ratio);
-                });
-              });
-
-              retakeBtn.addEventListener("click", () => {
-                previewModal.classList.remove("open");
-                capturedDataUrl = null;
-                capturedBlob = null;
-              });
-
-              window.closePreviewIfOpen = () => {
-                if (previewModal.classList.contains("open")) {
-                  previewModal.classList.remove("open");
-                  capturedDataUrl = null;
-                  capturedBlob = null;
-                  return true;
-                }
-                return false;
-              };
-
-              downloadBtn.addEventListener("click", downloadPhoto);
-              retryBtn.addEventListener("click", startCamera);
-
-              startCamera().then(() => {
-                setTimeout(initAI, 350);
-              });
-            </script>
-          </body>
-          </html>
-          HTML_EOF
-
-      - name: Build Debug APK
-        run: gradle assembleDebug --no-daemon
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v7
-        with:
-          name: AI-Camera-OPPO-Reno11
-          path: app/build/outputs/apk/debug/app-debug.apk
+              .slider-label { color: rgba(255,255,255,0.88); display: flex; align-items: center; gap: 6px; }
+              .slider-val { color: #fde68a; font-variant-numeric: tabular-nums; font-weight: 700; }
+
+              .mini-reset {
+                border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.08);
+                color: #e4e4e7; font-size: 10.5px; font-weight: 600;
+                padding: 2px
